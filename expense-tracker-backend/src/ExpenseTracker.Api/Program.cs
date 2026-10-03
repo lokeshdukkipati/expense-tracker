@@ -44,6 +44,12 @@ try
     }
 
     app.UseApiPipeline();
+
+    // Lightweight keep-alive endpoint for uptime monitors.
+    // Intentionally does NOT touch the database, so pings never wake Neon.
+    app.MapMethods("/api/ping", new[] { "GET", "HEAD" }, () => Results.Ok(new { status = "Healthy" }))
+       .AllowAnonymous();
+
     await app.RunAsync();
     return 0;
 }
