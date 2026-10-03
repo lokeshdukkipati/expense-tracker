@@ -6,5 +6,5 @@
 export const environment = {
   production: true,
   name: 'production',
-  apiUrl: 'https://expense-tracker-api-gmov.onrender.com/api',
+  apiUrl: 'https://expense-tracker-api-gmov.onrender.com/api/v1',
 };
