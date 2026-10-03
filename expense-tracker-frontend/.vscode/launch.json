@@ -1,0 +1,7 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "Chrome - Development", "type": "chrome", "request": "launch", "url": "http://localhost:4200", "webRoot": "${workspaceFolder}" },
+    { "name": "Chrome - Production", "type": "chrome", "request": "launch", "url": "http://localhost:4300", "webRoot": "${workspaceFolder}" }
+  ]
+}

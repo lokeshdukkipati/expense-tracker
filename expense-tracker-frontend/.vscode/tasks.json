@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "start (development :4200)", "type": "npm", "script": "start", "problemMatcher": [], "isBackground": true },
+    { "label": "start (production :4300)", "type": "npm", "script": "start:prod", "problemMatcher": [], "isBackground": true },
+    { "label": "build", "type": "npm", "script": "build", "group": { "kind": "build", "isDefault": true }, "problemMatcher": [] }
+  ]
+}

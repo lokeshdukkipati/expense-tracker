@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API - Development (http://localhost:5100)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/ExpenseTracker.Api/bin/Debug/net9.0/ExpenseTracker.Api.dll",
+      "cwd": "${workspaceFolder}/src/ExpenseTracker.Api",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5100"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/swagger"
+      }
+    },
+    {
+      "name": "API - Production (http://localhost:5200)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/ExpenseTracker.Api/bin/Debug/net9.0/ExpenseTracker.Api.dll",
+      "cwd": "${workspaceFolder}/src/ExpenseTracker.Api",
+      "envFile": "${workspaceFolder}/.env.production",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "ASPNETCORE_URLS": "http://localhost:5200"
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Expense Tracker",
+  "short_name": "Expenses",
+  "description": "Track expenses, import statements and understand your money.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0b14",
+  "theme_color": "#0a0b14",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
