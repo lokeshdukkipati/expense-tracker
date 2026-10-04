@@ -37,14 +37,37 @@ describe('dates', () => {
 
   it('labels full months by name and other ranges with dates', () => {
     expect(rangeLabel({ preset: 'month', from: '2026-09-01', to: '2026-09-30' })).toContain('2026');
-    expect(rangeLabel(presetRange('all', today))).toBe('All time');
+    expect(rangeLabel(presetRange('all', today))).toContain('All time');
+  });
+
+  it('starts the all-time range at the first transaction', () => {
+    expect(presetRange('all', today, '2022-10-27')).toEqual({
+      preset: 'all',
+      from: '2022-10-27',
+      to: '2026-09-30',
+    });
+  });
+
+  it('never starts all-time earlier than the API limit or later than today', () => {
+    expect(
+      daysInRange(presetRange('all', today, '2001-01-01')),
+    ).toBeLessThanOrEqual(3660);
+    expect(presetRange('all', today, '2030-01-01').from).toBe('2026-09-30');
   });
 
   it('chooses a readable chart granularity', () => {
-    expect(autoGranularity({ from: '2026-09-01', to: '2026-09-30' })).toBe('Day');
-    expect(autoGranularity({ from: '2026-01-01', to: '2026-06-30' })).toBe('Week');
-    expect(autoGranularity({ from: '2025-01-01', to: '2026-09-30' })).toBe('Month');
-    expect(autoGranularity({ from: '2020-01-01', to: '2026-09-30' })).toBe('Quarter');
+    expect(autoGranularity({ from: '2026-09-01', to: '2026-09-30' })).toBe(
+      'Day',
+    );
+    expect(autoGranularity({ from: '2026-01-01', to: '2026-06-30' })).toBe(
+      'Week',
+    );
+    expect(autoGranularity({ from: '2025-01-01', to: '2026-09-30' })).toBe(
+      'Month',
+    );
+    expect(autoGranularity({ from: '2020-01-01', to: '2026-09-30' })).toBe(
+      'Quarter',
+    );
   });
 
   it('adds months without overflowing short months', () => {

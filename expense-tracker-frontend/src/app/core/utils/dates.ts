@@ -56,7 +56,11 @@ export const PRESETS: { key: PresetKey; label: string; title: string }[] = [
   { key: 'custom', label: 'Custom', title: 'Custom range' },
 ];
 
-export function presetRange(preset: PresetKey, today: Date = new Date()): DateRange {
+/**
+ * `earliest` is the date of the first transaction. The "all" preset starts there (never earlier than the API's
+ * 10 year limit and never later than today); without it, "all" falls back to the last 10 years.
+ */
+export function presetRange(preset: PresetKey, today: Date = new Date(), earliest: string | null = null): DateRange {
   const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const to = ymd(t);
   switch (preset) {
@@ -76,8 +80,12 @@ export function presetRange(preset: PresetKey, today: Date = new Date()): DateRa
       return { preset, from: `${t.getFullYear()}-01-01`, to };
     case '12m':
       return { preset, from: ymd(addDays(addMonths(t, -12), 1)), to };
-    case 'all':
-      return { preset, from: ymd(addDays(t, -3650)), to };
+    case 'all': {
+      const limit = ymd(addDays(t, -3650));
+      const from =
+        earliest && earliest > limit ? (earliest <= to ? earliest : to) : limit;
+      return { preset, from, to };
+    }
     default:
       return { preset: 'custom', from: ymd(addDays(t, -29)), to };
   }
@@ -106,7 +114,9 @@ export function rangeLabel(range: DateRange): string {
   const from = parseYmd(range.from);
   const to = parseYmd(range.to);
 
-  if (range.preset === 'all') return 'All time';
+  if (range.preset === 'all') {
+    return `All time · since ${from.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
   if (range.preset === 'today' || range.from === range.to) {
     return from.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }

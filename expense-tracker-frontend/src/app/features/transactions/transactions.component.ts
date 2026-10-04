@@ -10,7 +10,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { TxFormService } from '../../core/services/tx-form.service';
 import { asyncState, autoLoad } from '../../core/utils/async-state';
 import { debounced } from '../../core/utils/debounce';
-import { DateRange, presetRange } from '../../core/utils/dates';
+import { DateRange } from '../../core/utils/dates';
 import { downloadBlob } from '../../core/utils/format';
 import { persistPageSize, readPageSize } from '../../core/utils/table-state';
 import { SearchBoxComponent, SegmentOption, SegmentedComponent } from '../../shared/ui/form-controls.component';
@@ -31,97 +31,297 @@ const SORTS: SelectOption[] = [
 @Component({
   selector: 'app-transactions',
   imports: [
-    RouterLink, IconComponent, SearchBoxComponent, SegmentedComponent, SelectComponent, TimelineFilterComponent, PaginatorComponent, TransactionListComponent,
-    EmptyStateComponent, ErrorStateComponent, SkeletonComponent, SpinnerComponent,
+    RouterLink,
+    IconComponent,
+    SearchBoxComponent,
+    SegmentedComponent,
+    SelectComponent,
+    TimelineFilterComponent,
+    PaginatorComponent,
+    TransactionListComponent,
+    EmptyStateComponent,
+    ErrorStateComponent,
+    SkeletonComponent,
+    SpinnerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
-        <div><h1>Transactions</h1><p>Search, filter and manage every entry. Press <kbd>n</kbd> to add, <kbd>/</kbd> to search.</p></div>
+        <div>
+          <h1>Transactions</h1>
+          <p>
+            Search, filter and manage every entry. Press <kbd>n</kbd> to add,
+            <kbd>/</kbd> to search.
+          </p>
+        </div>
         <div class="head-actions">
           <div class="export">
-            <button type="button" class="btn btn-secondary" (click)="exportMenu.set(!exportMenu())" [disabled]="exporting()" aria-haspopup="menu" [attr.aria-expanded]="exportMenu()">
-              @if (exporting()) { <app-spinner [size]="16" /> } @else { <app-icon name="download" [size]="18" /> } Export
+            <button
+              type="button"
+              class="btn btn-secondary"
+              (click)="exportMenu.set(!exportMenu())"
+              [disabled]="exporting()"
+              aria-haspopup="menu"
+              [attr.aria-expanded]="exportMenu()"
+            >
+              @if (exporting()) {
+                <app-spinner [size]="16" />
+              } @else {
+                <app-icon name="download" [size]="18" />
+              }
+              Export
             </button>
             @if (exportMenu()) {
               <div class="menu" role="menu">
-                <button type="button" role="menuitem" (click)="export('Xlsx')"><app-icon name="file" [size]="16" /> Excel (.xlsx)</button>
-                <button type="button" role="menuitem" (click)="export('Csv')"><app-icon name="file" [size]="16" /> CSV (.csv)</button>
+                <button type="button" role="menuitem" (click)="export('Xlsx')">
+                  <app-icon name="file" [size]="16" /> Excel (.xlsx)
+                </button>
+                <button type="button" role="menuitem" (click)="export('Csv')">
+                  <app-icon name="file" [size]="16" /> CSV (.csv)
+                </button>
                 <small>Exports the current filters.</small>
               </div>
             }
           </div>
-          <button type="button" class="btn btn-primary" (click)="txForm.openNew()"><app-icon name="plus" [size]="18" /> New transaction</button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="txForm.openNew()"
+          >
+            <app-icon name="plus" [size]="18" /> New transaction
+          </button>
         </div>
       </div>
 
       <section class="card card-pad controls">
         <div class="toolbar">
-          <app-search-box class="grow" [value]="search()" (valueChange)="setSearch($event)" placeholder="Search description or note" />
-          <app-select class="sort" [options]="sorts" [value]="sortKey()" [block]="false" (valueChange)="setSort($event)" ariaLabel="Sort order" />
-          <button type="button" class="btn btn-secondary" [class.active]="showFilters()" (click)="showFilters.set(!showFilters())" [attr.aria-expanded]="showFilters()">
+          <app-search-box
+            class="grow"
+            [value]="search()"
+            (valueChange)="setSearch($event)"
+            placeholder="Search description or note"
+          />
+          <app-select
+            class="sort"
+            [options]="sorts"
+            [value]="sortKey()"
+            [block]="false"
+            (valueChange)="setSort($event)"
+            ariaLabel="Sort order"
+          />
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [class.active]="showFilters()"
+            (click)="showFilters.set(!showFilters())"
+            [attr.aria-expanded]="showFilters()"
+          >
             <app-icon name="filter" [size]="17" /> Filters
-            @if (activeCount() > 0) { <span class="count">{{ activeCount() }}</span> }
+            @if (activeCount() > 0) {
+              <span class="count">{{ activeCount() }}</span>
+            }
           </button>
         </div>
 
-        <app-timeline-filter [range]="range()" (rangeChange)="setRange($event)" />
+        <app-timeline-filter
+          [range]="range()"
+          (rangeChange)="setRange($event)"
+        />
 
         @if (showFilters()) {
           <div class="filters">
-            <div class="field"><label>Type</label>
-              <app-segmented class="block" [options]="typeOptions" [value]="type() ?? 'all'" (valueChange)="setType($event)" /></div>
-            <div class="field"><label>Source</label>
-              <app-segmented class="block" [options]="sourceOptions" [value]="source() ?? 'all'" (valueChange)="setSource($event)" /></div>
-            <div class="field"><label>Account</label>
-              <app-select [options]="accountOptions()" [value]="accountId()" placeholder="All accounts" [clearable]="true" (valueChange)="setAccount($event)" ariaLabel="Account" /></div>
-            <div class="field"><label>Category</label>
-              <app-select [options]="categoryOptions()" [value]="categoryId()" placeholder="All categories" [searchable]="true" [clearable]="true" (valueChange)="setCategory($event)" ariaLabel="Category" /></div>
-            <div class="field"><label>Min amount</label>
-              <input class="input" type="number" inputmode="decimal" min="0" [value]="minAmount()" (input)="setMin($event)" placeholder="0" /></div>
-            <div class="field"><label>Max amount</label>
-              <input class="input" type="number" inputmode="decimal" min="0" [value]="maxAmount()" (input)="setMax($event)" placeholder="No limit" /></div>
-            <div class="field"><label>Tag</label>
-              <input class="input" [value]="tag()" (input)="setTag($event)" placeholder="e.g. trip" maxlength="30" /></div>
-            <div class="field actions"><button type="button" class="btn btn-ghost" (click)="clearFilters()" [disabled]="activeCount() === 0"><app-icon name="x" [size]="16" /> Clear all</button></div>
+            <div class="field">
+              <label>Type</label>
+              <app-segmented
+                class="block"
+                [options]="typeOptions"
+                [value]="type() ?? 'all'"
+                (valueChange)="setType($event)"
+              />
+            </div>
+            <div class="field">
+              <label>Source</label>
+              <app-segmented
+                class="block"
+                [options]="sourceOptions"
+                [value]="source() ?? 'all'"
+                (valueChange)="setSource($event)"
+              />
+            </div>
+            <div class="field">
+              <label>Account</label>
+              <app-select
+                [options]="accountOptions()"
+                [value]="accountId()"
+                placeholder="All accounts"
+                [clearable]="true"
+                (valueChange)="setAccount($event)"
+                ariaLabel="Account"
+              />
+            </div>
+            <div class="field">
+              <label>Category</label>
+              <app-select
+                [options]="categoryOptions()"
+                [value]="categoryId()"
+                placeholder="All categories"
+                [searchable]="true"
+                [clearable]="true"
+                (valueChange)="setCategory($event)"
+                ariaLabel="Category"
+              />
+            </div>
+            <div class="field">
+              <label>Min amount</label>
+              <input
+                class="input"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                [value]="minAmount()"
+                (input)="setMin($event)"
+                placeholder="0"
+              />
+            </div>
+            <div class="field">
+              <label>Max amount</label>
+              <input
+                class="input"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                [value]="maxAmount()"
+                (input)="setMax($event)"
+                placeholder="No limit"
+              />
+            </div>
+            <div class="field">
+              <label>Tag</label>
+              <input
+                class="input"
+                [value]="tag()"
+                (input)="setTag($event)"
+                placeholder="e.g. trip"
+                maxlength="30"
+              />
+            </div>
+            <div class="field actions">
+              <button
+                type="button"
+                class="btn btn-ghost"
+                (click)="clearFilters()"
+                [disabled]="activeCount() === 0"
+              >
+                <app-icon name="x" [size]="16" /> Clear all
+              </button>
+            </div>
           </div>
         }
 
         @if (activeCount() > 0 && !showFilters()) {
           <div class="active">
-            @for (c of activeChips(); track c) { <span class="chip">{{ c }}</span> }
-            <button type="button" class="link" (click)="clearFilters()">Clear all</button>
+            @for (c of activeChips(); track c) {
+              <span class="chip">{{ c }}</span>
+            }
+            <button type="button" class="link" (click)="clearFilters()">
+              Clear all
+            </button>
           </div>
         }
       </section>
 
-      <section class="card card-pad results" [class.is-loading]="state.loading() && !!state.data()">
+      <section
+        class="card card-pad results"
+        [class.is-loading]="state.loading() && !!state.data()"
+      >
         @if (state.error(); as e) {
           <app-error-state [error]="e" (retry)="refresh.bump()" />
         } @else {
           @if (state.data(); as page) {
             @if (page.items.length > 0) {
               <div class="meta">
-                <span><b>{{ page.totalCount }}</b> transaction{{ page.totalCount === 1 ? '' : 's' }}</span>
-                @if (selected().size > 0) { <span class="sel">{{ selected().size }} selected <button type="button" class="link" (click)="selected.set(emptySet)">Clear</button></span> }
+                <span
+                  ><b>{{ page.totalCount }}</b> transaction{{
+                    page.totalCount === 1 ? '' : 's'
+                  }}</span
+                >
+                @if (selected().size > 0) {
+                  <span class="sel"
+                    >{{ selected().size }} selected
+                    <button
+                      type="button"
+                      class="link"
+                      (click)="selected.set(emptySet)"
+                    >
+                      Clear
+                    </button></span
+                  >
+                }
               </div>
-              <app-transaction-list [items]="page.items" [selectable]="true" [(selected)]="selected" [sortBy]="sortBy()" [sortDir]="sortDir()"
-                                    (sortToggle)="toggleSort($event)" (rowClick)="txForm.openEdit($event)" />
-              <app-paginator [total]="page.totalCount" [page]="pageNo()" [pageSize]="pageSize()" (pageChange)="goTo($event)" (pageSizeChange)="setPageSize($event)" />
+              <app-transaction-list
+                [items]="page.items"
+                [selectable]="true"
+                [(selected)]="selected"
+                [sortBy]="sortBy()"
+                [sortDir]="sortDir()"
+                (sortToggle)="toggleSort($event)"
+                (rowClick)="txForm.openEdit($event)"
+              />
+              <app-paginator
+                [total]="page.totalCount"
+                [page]="pageNo()"
+                [pageSize]="pageSize()"
+                (pageChange)="goTo($event)"
+                (pageSizeChange)="setPageSize($event)"
+              />
             } @else if (activeCount() > 0) {
-              <app-empty-state icon="search" title="No transactions match" message="Nothing fits these filters. Try loosening them or clearing the search.">
-                <button type="button" class="btn btn-primary btn-sm" (click)="clearFilters()">Clear filters</button>
+              <app-empty-state
+                icon="search"
+                title="No transactions match"
+                message="Nothing fits these filters. Try loosening them or clearing the search."
+              >
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  (click)="clearFilters()"
+                >
+                  Clear filters
+                </button>
               </app-empty-state>
             } @else {
-              <app-empty-state icon="inbox" title="No transactions in this period" message="Pick a wider range, add one by hand, or import a statement.">
-                <button type="button" class="btn btn-secondary btn-sm" (click)="setRange(allTime())"><app-icon name="calendar" [size]="15" /> Show all time</button>
-                <button type="button" class="btn btn-primary btn-sm" (click)="txForm.openNew()"><app-icon name="plus" [size]="15" /> Add transaction</button>
-                <a routerLink="/import" class="btn btn-secondary btn-sm"><app-icon name="upload" [size]="15" /> Import file</a>
+              <app-empty-state
+                icon="inbox"
+                title="No transactions in this period"
+                message="Pick a wider range, add one by hand, or import a statement."
+              >
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="setRange(allTime())"
+                >
+                  <app-icon name="calendar" [size]="15" /> Show all time
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  (click)="txForm.openNew()"
+                >
+                  <app-icon name="plus" [size]="15" /> Add transaction
+                </button>
+                <a routerLink="/import" class="btn btn-secondary btn-sm"
+                  ><app-icon name="upload" [size]="15" /> Import file</a
+                >
               </app-empty-state>
             }
           } @else {
-            <div class="stack"><app-skeleton height="54px" /><app-skeleton height="54px" /><app-skeleton height="54px" /><app-skeleton height="54px" /><app-skeleton height="54px" /></div>
+            <div class="stack">
+              <app-skeleton height="54px" /><app-skeleton
+                height="54px"
+              /><app-skeleton height="54px" /><app-skeleton
+                height="54px"
+              /><app-skeleton height="54px" />
+            </div>
           }
         }
       </section>
@@ -129,42 +329,190 @@ const SORTS: SelectOption[] = [
 
     @if (selected().size > 0) {
       <div class="bulk" role="region" aria-label="Bulk actions">
-        <span><b>{{ selected().size }}</b> selected</span>
-        <button type="button" class="btn btn-ghost btn-sm" (click)="selected.set(emptySet)">Cancel</button>
-        <button type="button" class="btn btn-danger btn-sm" (click)="bulkDelete()" [disabled]="deleting()">
-          @if (deleting()) { <app-spinner [size]="14" /> } @else { <app-icon name="trash" [size]="15" /> } Delete
+        <span
+          ><b>{{ selected().size }}</b> selected</span
+        >
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          (click)="selected.set(emptySet)"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger btn-sm"
+          (click)="bulkDelete()"
+          [disabled]="deleting()"
+        >
+          @if (deleting()) {
+            <app-spinner [size]="14" />
+          } @else {
+            <app-icon name="trash" [size]="15" />
+          }
+          Delete
         </button>
       </div>
     }
   `,
-  styles: [`
-    kbd { padding: 1px 7px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface-2); font: inherit; font-size: .78rem; }
-    .controls { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
-    .sort { min-width: 170px; }
-    .btn.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); }
-    .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: .72rem; color: #fff; background: var(--grad); }
-    .filters { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-top: 4px; animation: fadeUp .3s both; }
-    .filters .actions { justify-content: flex-end; }
-    .block { display: block; }
-    .active { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    .link { background: none; border: 0; color: var(--primary-2); font-weight: 600; cursor: pointer; padding: 0 4px; }
-    .meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 2px 12px; color: var(--muted); font-size: .88rem; }
-    .meta b { color: var(--text); }
-    .export { position: relative; }
-    .menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; min-width: 210px; padding: 8px; border-radius: 16px; background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: pop .16s both; transform-origin: top right; }
-    .menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
-    .menu button:hover { background: var(--surface-2); }
-    .menu small { display: block; padding: 6px 12px 2px; color: var(--faint); }
-    .bulk { position: fixed; z-index: 40; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 14px 10px 20px; border-radius: 18px;
-      background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: bulkIn .3s cubic-bezier(.2, .9, .3, 1.2) both; }
-    @keyframes bulkIn { from { opacity: 0; transform: translate(-50%, 20px) scale(.95); } to { opacity: 1; transform: translate(-50%, 0); } }
-    @media (max-width: 1099.98px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 767.98px) {
-      .filters { grid-template-columns: minmax(0, 1fr); }
-      .sort { min-width: 0; flex: 1; }
-      .bulk { bottom: calc(var(--bottom-h) + 28px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); justify-content: space-between; }
-    }
-  `],
+  styles: [
+    `
+      kbd {
+        padding: 1px 7px;
+        border-radius: 6px;
+        border: 1px solid var(--border-strong);
+        background: var(--surface-2);
+        font: inherit;
+        font-size: 0.78rem;
+      }
+      .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-bottom: 16px;
+      }
+      .sort {
+        min-width: 170px;
+      }
+      .btn.active {
+        border-color: var(--primary);
+        background: color-mix(in srgb, var(--primary) 14%, transparent);
+      }
+      .count {
+        display: inline-grid;
+        place-items: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        color: #fff;
+        background: var(--grad);
+      }
+      .filters {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        padding-top: 4px;
+        animation: fadeUp 0.3s both;
+      }
+      .filters .actions {
+        justify-content: flex-end;
+      }
+      .block {
+        display: block;
+      }
+      .active {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .link {
+        background: none;
+        border: 0;
+        color: var(--primary-2);
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0 4px;
+      }
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 0 2px 12px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+      .meta b {
+        color: var(--text);
+      }
+      .export {
+        position: relative;
+      }
+      .menu {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        z-index: 30;
+        min-width: 210px;
+        padding: 8px;
+        border-radius: 16px;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-strong);
+        box-shadow: var(--shadow-lg);
+        animation: pop 0.16s both;
+        transform-origin: top right;
+      }
+      .menu button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        height: 40px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 10px;
+        background: none;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .menu button:hover {
+        background: var(--surface-2);
+      }
+      .menu small {
+        display: block;
+        padding: 6px 12px 2px;
+        color: var(--faint);
+      }
+      .bulk {
+        position: fixed;
+        z-index: 40;
+        left: 50%;
+        bottom: calc(24px + env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 14px 10px 20px;
+        border-radius: 18px;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-strong);
+        box-shadow: var(--shadow-lg);
+        animation: bulkIn 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+      }
+      @keyframes bulkIn {
+        from {
+          opacity: 0;
+          transform: translate(-50%, 20px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+      }
+      @media (max-width: 1099.98px) {
+        .filters {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 767.98px) {
+        .filters {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .sort {
+          min-width: 0;
+          flex: 1;
+        }
+        .bulk {
+          bottom: calc(var(--bottom-h) + 28px + env(safe-area-inset-bottom));
+          width: calc(100vw - 24px);
+          justify-content: space-between;
+        }
+      }
+    `,
+  ],
 })
 export class TransactionsComponent {
   private readonly api = inject(TransactionsApi);
@@ -177,8 +525,16 @@ export class TransactionsComponent {
 
   protected readonly sorts = SORTS;
   protected readonly emptySet: ReadonlySet<string> = new Set<string>();
-  protected readonly typeOptions: SegmentOption[] = [{ value: 'all', label: 'All' }, { value: 'Expense', label: 'Expense' }, { value: 'Income', label: 'Income' }];
-  protected readonly sourceOptions: SegmentOption[] = [{ value: 'all', label: 'All' }, { value: 'Manual', label: 'Manual' }, { value: 'Import', label: 'Imported' }];
+  protected readonly typeOptions: SegmentOption[] = [
+    { value: 'all', label: 'All' },
+    { value: 'Expense', label: 'Expense' },
+    { value: 'Income', label: 'Income' },
+  ];
+  protected readonly sourceOptions: SegmentOption[] = [
+    { value: 'all', label: 'All' },
+    { value: 'Manual', label: 'Manual' },
+    { value: 'Import', label: 'Imported' },
+  ];
 
   protected readonly range = this.timeline.range;
   protected readonly search = signal('');
@@ -206,9 +562,15 @@ export class TransactionsComponent {
 
   protected readonly state = asyncState<PagedResult<TransactionDto>>();
 
-  protected readonly accountOptions = computed(() => this.refData.accountOptions());
-  protected readonly categoryOptions = computed(() => this.refData.categoryOptions(undefined, true));
-  protected readonly sortKey = computed(() => `${this.sortBy()}:${this.sortDir()}`);
+  protected readonly accountOptions = computed(() =>
+    this.refData.accountOptions(),
+  );
+  protected readonly categoryOptions = computed(() =>
+    this.refData.categoryOptions(undefined, true),
+  );
+  protected readonly sortKey = computed(
+    () => `${this.sortBy()}:${this.sortDir()}`,
+  );
 
   private readonly filter = computed<TransactionFilterParams>(() => ({
     from: this.range().from,
@@ -240,8 +602,11 @@ export class TransactionsComponent {
     const chips: string[] = [];
     if (this.search().trim()) chips.push(`“${this.search().trim()}”`);
     if (this.type()) chips.push(this.type() as string);
-    if (this.source()) chips.push(this.source() === 'Import' ? 'Imported' : 'Manual');
-    const account = this.refData.accounts().find((a) => a.id === this.accountId());
+    if (this.source())
+      chips.push(this.source() === 'Import' ? 'Imported' : 'Manual');
+    const account = this.refData
+      .accounts()
+      .find((a) => a.id === this.accountId());
     if (account) chips.push(account.name);
     const category = this.refData.categoryById().get(this.categoryId() ?? '');
     if (category) chips.push(category.name);
@@ -254,17 +619,24 @@ export class TransactionsComponent {
   constructor() {
     autoLoad(this.state, () => {
       this.refresh.version();
-      return this.api.query({ ...this.filter(), page: this.pageNo(), pageSize: this.pageSize(), sortBy: this.sortBy(), sortDir: this.sortDir() });
+      return this.api.query({
+        ...this.filter(),
+        page: this.pageNo(),
+        pageSize: this.pageSize(),
+        sortBy: this.sortBy(),
+        sortDir: this.sortDir(),
+      });
     });
   }
 
   @HostListener('document:pointerdown', ['$event'])
   protected onPointer(event: PointerEvent): void {
-    if (this.exportMenu() && !(event.target as HTMLElement).closest('.export')) this.exportMenu.set(false);
+    if (this.exportMenu() && !(event.target as HTMLElement).closest('.export'))
+      this.exportMenu.set(false);
   }
 
   protected allTime(): DateRange {
-    return presetRange('all');
+    return this.timeline.allTime();
   }
 
   protected setRange(range: DateRange): void {
@@ -321,7 +693,8 @@ export class TransactionsComponent {
 
   protected toggleSort(key: string): void {
     const by = key === 'amount' ? 'amount' : 'date';
-    if (this.sortBy() === by) this.sortDir.set(this.sortDir() === 'desc' ? 'asc' : 'desc');
+    if (this.sortBy() === by)
+      this.sortDir.set(this.sortDir() === 'desc' ? 'asc' : 'desc');
     else {
       this.sortBy.set(by);
       this.sortDir.set('desc');
@@ -382,7 +755,9 @@ export class TransactionsComponent {
       next: (result) => {
         this.deleting.set(false);
         this.selected.set(this.emptySet);
-        this.toast.success(`${result.deleted} transaction${result.deleted === 1 ? '' : 's'} deleted.`);
+        this.toast.success(
+          `${result.deleted} transaction${result.deleted === 1 ? '' : 's'} deleted.`,
+        );
         this.refresh.bump();
         this.refData.load().subscribe();
       },
