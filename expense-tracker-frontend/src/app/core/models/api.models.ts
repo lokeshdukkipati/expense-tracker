@@ -73,12 +73,63 @@ export interface ImportRowSampleDto {
   rowNumber: number; localTimestamp: string; type: TransactionType; amount: number; currency: string;
   account: string; category: string; subcategory: string | null; description: string | null;
 }
-export interface InvalidRowDto { rowNumber: number; reason: string }
+export interface InvalidRowDto {
+  rowNumber: number;
+  reason: string;
+}
+export type ImportMatchMode = 'Exact' | 'Smart' | 'Loose';
+export interface DuplicateRowDto {
+  rowNumber: number;
+  localTimestamp: string;
+  type: TransactionType;
+  amount: number;
+  currency: string;
+  description: string | null;
+  reason: string;
+}
+export interface ImportWarningDto {
+  rowNumber: number;
+  message: string;
+}
+export interface FileAccountDto {
+  name: string;
+  rows: number;
+  matchedAccountId: string | null;
+}
+export interface FileCategoryDto {
+  type: TransactionType;
+  name: string;
+  rows: number;
+  matchedCategoryId: string | null;
+}
+export interface ImportMappings {
+  accounts: Record<string, string>;
+  categories: Record<string, string>;
+}
 export interface ImportPreviewDto {
-  fileName: string; fileHash: string; format: string; totalRows: number; newRows: number; duplicateRows: number;
-  invalidRows: number; fileAlreadyImported: boolean; previousImport: ImportBatchDto | null;
-  firstDate: string | null; lastDate: string | null; newIncomeTotal: number; newExpenseTotal: number;
-  newAccounts: string[]; newCategories: string[]; sampleNewRows: ImportRowSampleDto[]; invalidSamples: InvalidRowDto[];
+  fileName: string;
+  fileHash: string;
+  format: string;
+  totalRows: number;
+  newRows: number;
+  duplicateRows: number;
+  invalidRows: number;
+  fileAlreadyImported: boolean;
+  previousImport: ImportBatchDto | null;
+  firstDate: string | null;
+  lastDate: string | null;
+  newIncomeTotal: number;
+  newExpenseTotal: number;
+  newAccounts: string[];
+  newCategories: string[];
+  sampleNewRows: ImportRowSampleDto[];
+  invalidSamples: InvalidRowDto[];
+  matchMode: ImportMatchMode;
+  warningRows: number;
+  duplicateSamples: DuplicateRowDto[];
+  warnings: ImportWarningDto[];
+  fileAccounts: FileAccountDto[];
+  fileCategories: FileCategoryDto[];
 }
 export interface ImportResultDto { batch: ImportBatchDto; accountsCreated: number; categoriesCreated: number }
 

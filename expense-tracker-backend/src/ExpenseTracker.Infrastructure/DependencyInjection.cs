@@ -54,6 +54,7 @@ public static class DependencyInjection
 
         services.AddSingleton(configuration.GetSection("Import").Get<ImportOptions>() ?? new ImportOptions());
         services.AddSingleton<IImportParser, MoneyManagerXlsxParser>();
+        services.AddSingleton<IImportParser, CsvImportParser>();
         services.AddSingleton<ISpreadsheetWriter, ClosedXmlSpreadsheetWriter>();
 
         return services;

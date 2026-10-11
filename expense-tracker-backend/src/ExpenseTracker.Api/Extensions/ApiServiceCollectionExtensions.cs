@@ -24,6 +24,7 @@ public static class ApiServiceCollectionExtensions
 {
     public const string CorsPolicy = "Frontend";
     public const string AuthRateLimitPolicy = "auth";
+    public const string ImportRateLimitPolicy = "import";
 
     public static IServiceCollection AddApi(this IServiceCollection services, IConfiguration configuration)
     {
@@ -156,6 +157,18 @@ public static class ApiServiceCollectionExtensions
                     _ => new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = permitsPerMinute,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+
+            // Imports are heavy: limited per signed-in user (or per IP when anonymous).
+            options.AddPolicy(ImportRateLimitPolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.User.FindFirst("sub")?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true

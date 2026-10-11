@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using ClosedXML.Excel;
 using ExpenseTracker.Application.Imports;
 using ExpenseTracker.Domain.Enums;
@@ -14,6 +15,9 @@ namespace ExpenseTracker.Infrastructure.Imports;
 /// </summary>
 public sealed class MoneyManagerXlsxParser : IImportParser
 {
+    private const int AbsoluteMaxRows = 200_000;
+    private const int MaxArchiveEntries = 5_000;
+    private const long MaxUnpackedBytes = 300L * 1024 * 1024;
     private const string DefaultAccount = "Cash";
     private const string DefaultCategory = "Other";
 
@@ -42,6 +46,7 @@ public sealed class MoneyManagerXlsxParser : IImportParser
 
     private ParseResult Parse(Stream content, CancellationToken cancellationToken)
     {
+        GuardArchive(content);
         using var workbook = new XLWorkbook(content);
 
         var sheet = workbook.Worksheets.FirstOrDefault()
@@ -76,6 +81,12 @@ public sealed class MoneyManagerXlsxParser : IImportParser
         var noteColumn = Find(columns, "Note");
         var descriptionColumn = Find(columns, "Description");
         var currencyColumn = Find(columns, "Currency");
+
+        if (lastRow - headerRow.RowNumber() > AbsoluteMaxRows)
+        {
+            throw new BusinessRuleException(
+                $"The sheet has more than {AbsoluteMaxRows:N0} rows. Split it into smaller files.", "too_many_rows");
+        }
 
         var rows = new List<ParsedRow>();
         var invalid = new List<InvalidRow>();
@@ -138,6 +149,39 @@ public sealed class MoneyManagerXlsxParser : IImportParser
         }
 
         return new ParseResult(FormatName, rows, invalid);
+    }
+
+    /// <summary>An .xlsx is a zip. Reject anything else, and zip bombs that would unpack into something huge.</summary>
+    private static void GuardArchive(Stream content)
+    {
+        try
+        {
+            content.Position = 0;
+            using var archive = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
+
+            if (archive.Entries.Count > MaxArchiveEntries)
+            {
+                throw new BusinessRuleException("The workbook contains too many parts.", "file_too_large");
+            }
+
+            long total = 0;
+            foreach (var entry in archive.Entries)
+            {
+                total += entry.Length;
+                if (total > MaxUnpackedBytes)
+                {
+                    throw new BusinessRuleException("The workbook is too large once unpacked.", "file_too_large");
+                }
+            }
+        }
+        catch (InvalidDataException)
+        {
+            throw new BusinessRuleException("The file is not a valid .xlsx workbook.", "invalid_workbook");
+        }
+        finally
+        {
+            content.Position = 0;
+        }
     }
 
     private static int? Find(Dictionary<string, int> columns, params string[] names)
