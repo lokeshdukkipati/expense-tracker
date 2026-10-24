@@ -4,7 +4,6 @@ import {
   computed,
   effect,
   inject,
-  signal,
   untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -14,10 +13,10 @@ import { AnalyticsApi } from '../../core/api/analytics.api';
 import { WealthApi } from '../../core/api/wealth.api';
 import { AuthService } from '../../core/services/auth.service';
 import { RefreshService } from '../../core/services/refresh.service';
+import { StoryService } from '../../core/services/story.service';
 import { asyncState, autoLoad } from '../../core/utils/async-state';
 import { formatMoney } from '../../core/utils/format';
 import { IconComponent } from '../../shared/ui/icon.component';
-import { StoryViewerComponent } from '../../shared/ui/story-viewer.component';
 import { StoryInput, buildMoneyStory } from './money-story';
 
 const ymd = (d: Date): string =>
@@ -30,70 +29,113 @@ const rangeText = (from: Date, to: Date): string => {
   });
   return `${format.format(from)} – ${format.format(to)}`;
 };
+
 /**
- * A card that opens "your month in a few cards" as swipeable stories. It renders nothing until there is something to
- * tell, and opens by itself when the page is visited with ?story=1 (the command palette uses that).
- * Place it on the dashboard.
+ * The dashboard card that opens "your month in a few cards" as full-screen stories.
+ * It tells the story of this month, or last month, or the last 90 days: whichever has enough activity.
+ * Renders nothing until there is something to tell. Visiting any page with ?story=1 opens it straight away.
  */
 @Component({
   selector: 'app-money-story',
-  imports: [IconComponent, StoryViewerComponent],
+  imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (stories().length > 0) {
-      <section class="card story">
-        <span class="glow" aria-hidden="true"></span>
-        <div class="text">
+      <button
+        type="button"
+        class="story"
+        (click)="play()"
+        aria-label="Play your money story"
+      >
+        <span class="ring" aria-hidden="true"
+          ><span class="core"><app-icon name="play" [size]="20" /></span
+        ></span>
+        <span class="text">
           <span class="kicker">Your {{ label() }} story</span>
           <strong class="headline">{{ headline() }}</strong>
-          <small>{{ stories().length }} cards · under a minute</small>
-        </div>
-        <button
-          type="button"
-          class="play"
-          aria-label="Play your money story"
-          (click)="open.set(true)"
-        >
-          <app-icon name="play" [size]="22" />
-        </button>
-      </section>
-      <app-story-viewer
-        [stories]="stories()"
-        [open]="open()"
-        (closed)="open.set(false)"
-      />
+          <small>{{ stories().length }} cards · {{ range() }}</small>
+        </span>
+        <app-icon name="chevron-right" [size]="20" />
+      </button>
     }
   `,
   styles: [
     `
+      :host {
+        display: block;
+        min-width: 0;
+      }
       .story {
         position: relative;
-        overflow: hidden;
+        width: 100%;
         display: flex;
         align-items: center;
         gap: 16px;
-        padding: 18px 20px;
-        color: #fff;
-        border: 0;
-        background: linear-gradient(
-          135deg,
-          color-mix(in srgb, var(--primary) 85%, #05060e),
-          color-mix(in srgb, var(--pink) 70%, #05060e)
-        );
+        padding: 16px 18px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+        color: #f5f6fb;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            120% 140% at 100% 0%,
+            color-mix(in srgb, var(--primary) 38%, transparent),
+            transparent 60%
+          ),
+          radial-gradient(
+            120% 140% at 0% 100%,
+            color-mix(in srgb, var(--pink) 26%, transparent),
+            transparent 60%
+          ),
+          #0e1018;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
       }
-      .glow {
-        position: absolute;
-        width: 220px;
-        height: 220px;
-        right: -60px;
-        top: -90px;
+      .story:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+      }
+      .story:active {
+        transform: scale(0.985);
+      }
+      .ring {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 62px;
+        height: 62px;
+        flex: none;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.18);
-        filter: blur(30px);
-        pointer-events: none;
+      }
+      .ring::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(
+          from 0deg,
+          var(--primary),
+          var(--pink),
+          var(--accent),
+          var(--primary)
+        );
+        animation: spin 5s linear infinite;
+      }
+      .core {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: #0e1018;
+        color: #fff;
       }
       .text {
-        position: relative;
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -101,40 +143,24 @@ const rangeText = (from: Date, to: Date): string => {
         flex: 1;
       }
       .kicker {
-        font-size: 0.74rem;
+        font-size: 0.72rem;
         font-weight: 700;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        opacity: 0.85;
+        color: rgba(255, 255, 255, 0.7);
       }
       .headline {
-        font-size: clamp(1.2rem, 5vw, 1.5rem);
+        font-size: clamp(1.15rem, 5vw, 1.45rem);
         letter-spacing: -0.02em;
         overflow-wrap: anywhere;
       }
       small {
-        opacity: 0.8;
+        color: rgba(255, 255, 255, 0.65);
       }
-      .play {
-        position: relative;
-        display: grid;
-        place-items: center;
-        width: 52px;
-        height: 52px;
-        flex: none;
-        border: 0;
-        border-radius: 50%;
-        cursor: pointer;
-        color: var(--primary);
-        background: #fff;
-        box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.5);
-        transition: transform 0.15s;
-      }
-      .play:hover {
-        transform: scale(1.06);
-      }
-      .play:active {
-        transform: scale(0.94);
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     `,
   ],
@@ -144,23 +170,23 @@ export class MoneyStoryComponent {
   private readonly wealth = inject(WealthApi);
   private readonly auth = inject(AuthService);
   private readonly refresh = inject(RefreshService);
+  private readonly story = inject(StoryService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  protected readonly open = signal(false);
-
   private readonly state = asyncState<Omit<StoryInput, 'currency'>>();
-  /** "October", "September" or "recent": whichever period actually has something to tell. */
-  protected readonly label = computed(
-    () => this.state.data()?.periodLabel ?? '',
-  );
-
   private readonly storyParam = toSignal(
     this.route.queryParamMap.pipe(map((p) => p.get('story'))),
     {
       initialValue: this.route.snapshot.queryParamMap.get('story'),
     },
   );
+
+  /** "October", "September" or "recent": whichever period actually has something to tell. */
+  protected readonly label = computed(
+    () => this.state.data()?.periodLabel ?? '',
+  );
+  protected readonly range = computed(() => this.state.data()?.rangeText ?? '');
 
   protected readonly stories = computed(() => {
     const data = this.state.data();
@@ -175,6 +201,37 @@ export class MoneyStoryComponent {
       ? `${formatMoney(data.summary.expense, this.auth.currency(), { compact: true })} spent${data.isCurrent ? ' so far' : ''}`
       : '';
   });
+
+  constructor() {
+    autoLoad(this.state, () => {
+      this.refresh.version();
+      return this.loadPeriod(0);
+    });
+
+    // Opened from the command palette: show the story as soon as it is ready, then tidy the address.
+    effect(() => {
+      const wanted = this.storyParam() === '1';
+      const ready = this.stories().length > 0;
+      if (wanted && ready) {
+        untracked(() => {
+          this.play();
+          void this.router.navigate([], {
+            queryParams: { story: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+        });
+      }
+    });
+  }
+
+  protected play(): void {
+    this.story.open({
+      title: `Your ${this.label() || 'money'} story`,
+      subtitle: this.range(),
+      cards: this.stories(),
+    });
+  }
 
   /** This month so far, then last month, then the last 90 days. */
   private periods(): {
@@ -253,28 +310,5 @@ export class MoneyStoryComponent {
         );
       }),
     );
-  }
-
-  constructor() {
-    autoLoad(this.state, () => {
-      this.refresh.version();
-      return this.loadPeriod(0);
-    });
-
-    // Opened from the command palette: show the story as soon as it is ready, then tidy the address.
-    effect(() => {
-      const wanted = this.storyParam() === '1';
-      const ready = this.stories().length > 0;
-      if (wanted && ready) {
-        untracked(() => {
-          this.open.set(true);
-          void this.router.navigate([], {
-            queryParams: { story: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-          });
-        });
-      }
-    });
   }
 }

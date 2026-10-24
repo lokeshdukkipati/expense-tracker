@@ -4,8 +4,8 @@ import {
   PatternsDto,
   SummaryDto,
 } from '../../core/models/api.models';
+import { StoryCard } from '../../core/services/story.service';
 import { formatDate, formatMoney } from '../../core/utils/format';
-import { StoryCard } from '../../shared/ui/story-viewer.component';
 
 export interface StoryInput {
   summary: SummaryDto;
@@ -23,11 +23,31 @@ export interface StoryInput {
 }
 
 const MAX_CARDS = 8;
+const WEEK = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+const WEEK_LETTER: Record<string, string> = {
+  Monday: 'M',
+  Tuesday: 'T',
+  Wednesday: 'W',
+  Thursday: 'T',
+  Friday: 'F',
+  Saturday: 'S',
+  Sunday: 'S',
+};
+/** If there are too many cards, these go first. */
+const FIRST_TO_DROP = ['drop', 'jump', 'streak', 'largest'];
 
 /**
- * Turns the numbers into a handful of plain-English story cards ("Food is up 22% on before").
- * No AI involved: every sentence is a template filled with the user's own figures, so it is free, instant and
- * always consistent with the analytics. Cards with nothing to say are simply left out.
+ * Turns the numbers into a handful of plain-English story cards, each with a matching picture.
+ * No AI is involved: every sentence is a template filled with the user's own figures, so it is free, instant and
+ * always consistent with the analytics. Cards with nothing to say are left out.
  */
 export function buildMoneyStory(input: StoryInput): StoryCard[] {
   const {
@@ -45,6 +65,8 @@ export function buildMoneyStory(input: StoryInput): StoryCard[] {
 
   const money = (value: number): string =>
     formatMoney(value, currency, { compact: true });
+  const ratio = (value: number, max: number): number =>
+    max > 0 ? Math.max(0.04, Math.min(1, value / max)) : 0.04;
   const cards: StoryCard[] = [];
 
   cards.push({
@@ -59,13 +81,13 @@ export function buildMoneyStory(input: StoryInput): StoryCard[] {
         : `Here is how ${periodLabel} went`,
     body: `${s.transactionCount} transactions, about ${money(s.averageDailyExpense)} a day.`,
     tone: 'brand',
-    icon: 'sparkles',
   });
 
   if (s.expenseChangePercent !== null && s.previous.expense > 0) {
     const percent = Math.abs(Math.round(s.expenseChangePercent));
     if (percent > 0) {
       const less = s.expenseChangePercent < 0;
+      const max = Math.max(s.expense, s.previous.expense);
       cards.push({
         id: 'change',
         kicker: `Compared with ${previousText}`,
@@ -74,9 +96,23 @@ export function buildMoneyStory(input: StoryInput): StoryCard[] {
         title: less
           ? 'You are spending less than in the previous period'
           : 'Spending is up on the previous period',
-        body: `${money(s.expense)} (${rangeText}) against ${money(s.previous.expense)} (${previousText}).`,
+        visual: {
+          kind: 'rank',
+          items: [
+            {
+              label: `Now · ${rangeText}`,
+              text: money(s.expense),
+              ratio: ratio(s.expense, max),
+            },
+            {
+              label: `Before · ${previousText}`,
+              text: money(s.previous.expense),
+              ratio: ratio(s.previous.expense, max),
+              muted: true,
+            },
+          ],
+        },
         tone: less ? 'success' : 'warning',
-        icon: less ? 'trending-down' : 'trending-up',
       });
     }
   }
@@ -89,98 +125,150 @@ export function buildMoneyStory(input: StoryInput): StoryCard[] {
     const share = Math.round((top.current / s.expense) * 100);
     const trend =
       top.changePercent !== null && Math.abs(top.changePercent) >= 1
-        ? `, ${Math.abs(Math.round(top.changePercent))}% ${top.changePercent > 0 ? 'more' : 'less'} than before`
+        ? ` That is ${Math.abs(Math.round(top.changePercent))}% ${top.changePercent > 0 ? 'more' : 'less'} than before.`
         : '';
     cards.push({
       id: 'top-category',
-      kicker: 'Biggest category',
-      metric: money(top.current),
-      metricLabel: `${share}% of your spending`,
+      kicker: 'Where it went',
+      metric: `${share}%`,
+      metricLabel: `of your spending went to ${top.name}`,
       title: `${top.name} leads your spending`,
-      body: `You have spent ${money(top.current)} on ${top.name}${trend}.`,
+      body: `${money(top.current)} in total.${trend}`,
+      visual: {
+        kind: 'rank',
+        items: ranked
+          .slice(0, 3)
+          .map((c) => ({
+            label: c.name,
+            text: money(c.current),
+            ratio: ratio(c.current, top.current),
+          })),
+      },
       tone: 'info',
-      icon: 'pie-slice',
     });
   }
 
   const jump = [...comparison]
     .filter((c) => c.change > 0 && c.previous > 0)
     .sort((a, b) => b.change - a.change)[0];
-if (jump && jump.categoryId !== top?.categoryId) {
-  cards.push({
-    id: 'jump',
-    kicker: 'Biggest jump',
-    metric: `+${money(jump.change)}`,
-    metricLabel:
-      jump.changePercent !== null
-        ? `up ${Math.round(jump.changePercent)}% on before`
-        : 'more than before',
-    title: `${jump.name} grew the most`,
-    body: `It was ${money(jump.previous)} in the previous period and is ${money(jump.current)} now.`,
-    tone: 'warning',
-    icon: 'trending-up',
-  });
-}
+  if (jump && jump.categoryId !== top?.categoryId) {
+    const max = Math.max(jump.current, jump.previous);
+    cards.push({
+      id: 'jump',
+      kicker: 'Biggest jump',
+      metric: `+${money(jump.change)}`,
+      metricLabel:
+        jump.changePercent !== null
+          ? `up ${Math.round(jump.changePercent)}% on before`
+          : 'more than before',
+      title: `${jump.name} grew the most`,
+      visual: {
+        kind: 'rank',
+        items: [
+          {
+            label: `Now · ${rangeText}`,
+            text: money(jump.current),
+            ratio: ratio(jump.current, max),
+          },
+          {
+            label: `Before · ${previousText}`,
+            text: money(jump.previous),
+            ratio: ratio(jump.previous, max),
+            muted: true,
+          },
+        ],
+      },
+      tone: 'warning',
+    });
+  }
 
   const drop = [...comparison]
     .filter((c) => c.change < 0)
     .sort((a, b) => a.change - b.change)[0];
   if (drop) {
+    const max = Math.max(drop.current, drop.previous);
     cards.push({
       id: 'drop',
       kicker: 'Good news',
       metric: money(Math.abs(drop.change)),
       metricLabel: 'less than before',
       title: `You spent less on ${drop.name}`,
-      body: `${money(drop.current)} now, against ${money(drop.previous)} in the previous period.`,
+      visual: {
+        kind: 'rank',
+        items: [
+          {
+            label: `Now · ${rangeText}`,
+            text: money(drop.current),
+            ratio: ratio(drop.current, max),
+          },
+          {
+            label: `Before · ${previousText}`,
+            text: money(drop.previous),
+            ratio: ratio(drop.previous, max),
+            muted: true,
+          },
+        ],
+      },
       tone: 'success',
-      icon: 'trending-down',
     });
   }
 
-  const weekdayTotals = patterns?.byWeekday ?? [];
-  const spent = weekdayTotals.reduce((sum, d) => sum + d.total, 0);
-  if (spent > 0) {
-    const weekend = weekdayTotals
+  const byDay = patterns?.byWeekday ?? [];
+  const busiest = [...byDay].sort(
+    (a, b) => b.averagePerDay - a.averagePerDay,
+  )[0];
+  const spent = byDay.reduce((sum, d) => sum + d.total, 0);
+  if (busiest && busiest.averagePerDay > 0 && spent > 0) {
+    const weekend = byDay
       .filter((d) => d.day === 'Saturday' || d.day === 'Sunday')
       .reduce((sum, d) => sum + d.total, 0);
     const weekendShare = Math.round((weekend / spent) * 100);
-    // Two days of seven would be about 29%, so only call out clearly unusual splits.
-    if (weekendShare >= 40) {
-      cards.push({
-        id: 'weekend',
-        kicker: 'When you spend',
-        metric: `${weekendShare}%`,
-        metricLabel: 'of spending on Saturday and Sunday',
-        title: 'Weekends drive your spending',
-        body: 'Planning weekend treats ahead is the easiest place to save.',
-        tone: 'warning',
-        icon: 'calendar',
-      });
-    } else if (weekendShare <= 18) {
-      cards.push({
-        id: 'weekday',
-        kicker: 'When you spend',
-        metric: `${100 - weekendShare}%`,
-        metricLabel: 'of spending Monday to Friday',
-        title: 'Weekdays carry most of your spending',
-        body: 'Work-week costs like food and travel are where your money goes.',
-        tone: 'info',
-        icon: 'calendar',
-      });
-    }
+    const maxAverage = busiest.averagePerDay;
+    cards.push({
+      id: 'week',
+      kicker: 'Your week',
+      metric: busiest.day,
+      metricLabel: `is your biggest spending day, about ${money(busiest.averagePerDay)}`,
+      title:
+        weekendShare >= 40
+          ? 'Weekends drive your spending'
+          : weekendShare <= 18
+            ? 'Weekdays carry most of your spending'
+            : 'Your spending is spread across the week',
+      body: `${weekendShare}% of what you spent was on a Saturday or Sunday.`,
+      visual: {
+        kind: 'week',
+        days: WEEK.map((name) => {
+          const day = byDay.find((d) => d.day === name);
+          return {
+            label: WEEK_LETTER[name] ?? '',
+            ratio: ratio(day?.averagePerDay ?? 0, maxAverage),
+            accent: name === 'Saturday' || name === 'Sunday',
+          };
+        }),
+      },
+      tone: 'info',
+    });
   }
 
   if (s.largestExpense) {
     cards.push({
       id: 'largest',
       kicker: 'Largest single expense',
-      metric: money(s.largestExpense.amount),
-      metricLabel: formatDate(s.largestExpense.occurredAt, 'short'),
-      title: s.largestExpense.description || s.largestExpense.categoryName,
-      body: `Category: ${s.largestExpense.categoryName}.`,
+      title: 'The one that stood out',
+      visual: {
+        kind: 'receipt',
+        title: s.largestExpense.description || s.largestExpense.categoryName,
+        lines: [
+          { label: 'Category', value: s.largestExpense.categoryName },
+          {
+            label: 'Date',
+            value: formatDate(s.largestExpense.occurredAt, 'short'),
+          },
+        ],
+        total: money(s.largestExpense.amount),
+      },
       tone: 'danger',
-      icon: 'wallet',
     });
   }
 
@@ -191,8 +279,6 @@ if (jump && jump.categoryId !== top?.categoryId) {
     cards.push({
       id: 'savings',
       kicker: 'Saving',
-      metric: `${rate}%`,
-      metricLabel: 'of your income kept',
       title:
         rate >= 20
           ? 'You are saving well'
@@ -200,8 +286,15 @@ if (jump && jump.categoryId !== top?.categoryId) {
             ? 'You are keeping more than you spend'
             : 'You have spent more than you earned',
       body: `${money(s.income)} came in and ${money(s.expense)} went out.`,
+      visual: {
+        kind: 'ring',
+        percent: Math.max(0, Math.min(100, rate)),
+        center: `${rate}%`,
+        caption: 'of your income kept',
+      },
       tone: rate >= 20 ? 'success' : rate >= 0 ? 'info' : 'danger',
-      icon: 'percent',
+      action:
+        rate > 0 ? { label: 'Put it into a goal', link: '/goals' } : undefined,
     });
   }
 
@@ -215,34 +308,33 @@ if (jump && jump.categoryId !== top?.categoryId) {
         title: 'A habit is forming',
         body: `${achievements.noSpendDaysLast30} no-spend day${achievements.noSpendDaysLast30 === 1 ? '' : 's'} in the last 30 days.`,
         tone: 'success',
-        icon: 'flame',
       });
     } else if (achievements.noSpendDaysLast30 > 0) {
       cards.push({
-        id: 'no-spend',
+        id: 'streak',
         kicker: 'Habit',
         metric: String(achievements.noSpendDaysLast30),
         metricLabel: 'no-spend days in the last 30',
         title: 'Days without spending add up',
         body: 'Every one of them is money kept.',
         tone: 'success',
-        icon: 'leaf',
       });
     }
   }
 
-  cards.push({
+  const outro: StoryCard = {
     id: 'outro',
     title: 'That is the story so far',
-    body: 'Open Analytics for the full picture, or set a goal to put the savings to work.',
+    body: 'Open Analytics for the full picture.',
     tone: 'brand',
-    icon: 'award',
-  });
+    action: { label: 'Open analytics', link: '/analytics' },
+  };
 
-  // Keep the closing card; drop the least important middle cards if there are too many.
-  if (cards.length > MAX_CARDS) {
-    const outro = cards[cards.length - 1]!;
-    return [...cards.slice(0, MAX_CARDS - 1), outro];
+  for (const id of FIRST_TO_DROP) {
+    if (cards.length + 1 <= MAX_CARDS) break;
+    const at = cards.findIndex((c) => c.id === id);
+    if (at >= 0) cards.splice(at, 1);
   }
-  return cards;
+
+  return [...cards.slice(0, MAX_CARDS - 1), outro];
 }

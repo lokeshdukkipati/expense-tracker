@@ -36,6 +36,7 @@ import { IconComponent, IconName } from '../shared/ui/icon.component';
 import { OverlayComponent } from '../shared/ui/overlay.component';
 import { QuickAddComponent } from '../shared/ui/quick-add.component';
 import { ShortcutsOverlayComponent } from '../shared/ui/shortcuts-overlay.component';
+import { StoryViewerComponent } from '../shared/ui/story-viewer.component';
 import { TourComponent } from '../shared/ui/tour.component';
 
 interface NavItem {
@@ -82,6 +83,7 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
     ShortcutsOverlayComponent,
     TourComponent,
     ConfettiHostComponent,
+    StoryViewerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -301,6 +303,7 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
     <app-shortcuts-overlay />
     <app-tour />
     <app-confetti-host />
+    <app-story-viewer />
   `,
   styles: [
     `
