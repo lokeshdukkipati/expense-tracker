@@ -43,6 +43,10 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_archived");
 
+                    b.Property<bool>("IsSample")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_sample");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -181,6 +185,10 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_archived");
 
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -224,6 +232,77 @@ namespace ExpenseTracker.Infrastructure.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("UserId", "ParentId", "Type", "Name"), false);
 
                     b.ToTable("categories", (string)null);
+                });
+
+            modelBuilder.Entity("ExpenseTracker.Domain.Entities.CategoryRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("MatchType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("match_type");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("pattern");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<int>("TimesApplied")
+                        .HasColumnType("integer")
+                        .HasColumnName("times_applied");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_category_rules");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_category_rules_category_id");
+
+                    b.HasIndex("UserId", "Type", "MatchType", "Pattern")
+                        .IsUnique()
+                        .HasDatabaseName("ix_category_rules_user_id_type_match_type_pattern");
+
+                    b.ToTable("category_rules", (string)null);
                 });
 
             modelBuilder.Entity("ExpenseTracker.Domain.Entities.ImportBatch", b =>
@@ -361,6 +440,99 @@ namespace ExpenseTracker.Infrastructure.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("ExpenseTracker.Domain.Entities.SavingsGoal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("icon");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
+
+                    b.Property<bool>("IsSample")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_sample");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<decimal>("SavedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("saved_amount");
+
+                    b.Property<decimal>("TargetAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("target_amount");
+
+                    b.Property<DateOnly?>("TargetDate")
+                        .HasColumnType("date")
+                        .HasColumnName("target_date");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_savings_goals");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_savings_goals_account_id");
+
+                    b.HasIndex("UserId", "IsArchived")
+                        .HasDatabaseName("ix_savings_goals_user_id_is_archived");
+
+                    b.ToTable("savings_goals", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_savings_goals_saved_non_negative", "saved_amount >= 0");
+
+                            t.HasCheckConstraint("ck_savings_goals_target_positive", "target_amount > 0");
+                        });
+                });
+
             modelBuilder.Entity("ExpenseTracker.Domain.Entities.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -438,6 +610,10 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("tags");
 
+                    b.Property<Guid?>("TransferGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transfer_group_id");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -472,6 +648,10 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_transactions_user_id_occurred_at");
 
+                    b.HasIndex("UserId", "TransferGroupId")
+                        .HasDatabaseName("ix_transactions_user_id_transfer_group_id")
+                        .HasFilter("transfer_group_id IS NOT NULL");
+
                     b.HasIndex("UserId", "AccountId", "OccurredAt")
                         .HasDatabaseName("ix_transactions_user_id_account_id_occurred_at");
 
@@ -481,6 +661,8 @@ namespace ExpenseTracker.Infrastructure.Migrations
                     b.ToTable("transactions", null, t =>
                         {
                             t.HasCheckConstraint("ck_transactions_amount_non_negative", "amount >= 0");
+
+                            t.HasCheckConstraint("ck_transactions_transfer_group", "(\"type\" IN ('TransferOut', 'TransferIn')) = (transfer_group_id IS NOT NULL)");
                         });
                 });
 
@@ -533,6 +715,10 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)")
                         .HasColumnName("password_hash");
+
+                    b.Property<string>("PreferencesJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("preferences_json");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
@@ -606,6 +792,27 @@ namespace ExpenseTracker.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ExpenseTracker.Domain.Entities.CategoryRule", b =>
+                {
+                    b.HasOne("ExpenseTracker.Domain.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_category_rules_categories_category_id");
+
+                    b.HasOne("ExpenseTracker.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_category_rules_users_user_id");
+
+                    b.Navigation("Category");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ExpenseTracker.Domain.Entities.ImportBatch", b =>
                 {
                     b.HasOne("ExpenseTracker.Domain.Entities.User", "User")
@@ -626,6 +833,26 @@ namespace ExpenseTracker.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ExpenseTracker.Domain.Entities.SavingsGoal", b =>
+                {
+                    b.HasOne("ExpenseTracker.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_savings_goals_accounts_account_id");
+
+                    b.HasOne("ExpenseTracker.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_savings_goals_users_user_id");
+
+                    b.Navigation("Account");
 
                     b.Navigation("User");
                 });

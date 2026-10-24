@@ -19,7 +19,10 @@ public sealed record TransactionDto(
     List<string> Tags,
     TransactionSource Source,
     DateTimeOffset CreatedAt,
-    uint Version);
+    uint Version,
+    Guid? TransferGroupId,
+    Guid? TransferAccountId,
+    string? TransferAccountName);
 
 /// <summary>Fields shared by create and update so both are validated by the same rules.</summary>
 public interface ITransactionInput

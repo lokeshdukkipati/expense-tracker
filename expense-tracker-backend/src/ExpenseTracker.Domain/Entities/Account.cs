@@ -19,4 +19,7 @@ public class Account : BaseEntity
     public decimal OpeningBalance { get; set; }
 
     public bool IsArchived { get; set; }
+
+    /// <summary>True for the demo account created by the "load sample data" action.</summary>
+    public bool IsSample { get; set; }
 }

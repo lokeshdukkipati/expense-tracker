@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AccountsApi } from '../../core/api/accounts.api';
+import { TransfersApi } from '../../core/api/transfers.api';
 import { ApiError } from '../../core/errors/api-error';
 import { AccountDto, AccountType } from '../../core/models/api.models';
 import { AuthService } from '../../core/services/auth.service';
@@ -8,6 +9,7 @@ import { ConfirmService } from '../../core/services/confirm.service';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { RefreshService } from '../../core/services/refresh.service';
 import { ToastService } from '../../core/services/toast.service';
+import { TxFormService } from '../../core/services/tx-form.service';
 import { CURRENCY_OPTIONS } from '../../core/utils/currencies';
 import { TableState, compareNumber, compareText } from '../../core/utils/table-state';
 import { SearchBoxComponent, SortHeaderComponent } from '../../shared/ui/form-controls.component';
@@ -24,127 +26,537 @@ const TYPE_ICONS: Record<AccountType, IconName> = { Cash: 'wallet', Bank: 'folde
 @Component({
   selector: 'app-accounts',
   imports: [
-    ReactiveFormsModule, IconComponent, MoneyComponent, MoneyPipe, SearchBoxComponent, SortHeaderComponent, PaginatorComponent, OverlayComponent, SelectComponent,
-    EmptyStateComponent, SkeletonComponent, SpinnerComponent,
+    ReactiveFormsModule,
+    IconComponent,
+    MoneyComponent,
+    MoneyPipe,
+    SearchBoxComponent,
+    SortHeaderComponent,
+    PaginatorComponent,
+    OverlayComponent,
+    SelectComponent,
+    EmptyStateComponent,
+    SkeletonComponent,
+    SpinnerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
-        <div><h1>Accounts</h1><p>Wallets, bank accounts and cards. Balances update as you add transactions.</p></div>
-        <div class="head-actions"><button type="button" class="btn btn-primary" (click)="openNew()"><app-icon name="plus" [size]="18" /> New account</button></div>
+        <div>
+          <h1>Accounts</h1>
+          <p>
+            Wallets, bank accounts and cards. Balances update as you add
+            transactions.
+          </p>
+        </div>
+        <div class="head-actions">
+          <button type="button" class="btn btn-primary" (click)="openNew()">
+            <app-icon name="plus" [size]="18" /> New account
+          </button>
+        </div>
       </div>
 
       @if (!refData.loaded()) {
-        <div class="auto-grid"><app-skeleton height="140px" radius="20px" /><app-skeleton height="140px" radius="20px" /><app-skeleton height="140px" radius="20px" /></div>
+        <div class="auto-grid">
+          <app-skeleton height="140px" radius="20px" /><app-skeleton
+            height="140px"
+            radius="20px"
+          /><app-skeleton height="140px" radius="20px" />
+        </div>
       } @else if (refData.accounts().length === 0) {
         <section class="card card-pad">
-          <app-empty-state icon="wallet" title="No accounts yet" message="Create an account to start tracking balances. Importing a file creates the accounts it contains automatically.">
-            <button type="button" class="btn btn-primary" (click)="openNew()"><app-icon name="plus" [size]="18" /> Create your first account</button>
+          <app-empty-state
+            icon="wallet"
+            title="No accounts yet"
+            message="Create an account to start tracking balances. Importing a file creates the accounts it contains automatically."
+          >
+            <button type="button" class="btn btn-primary" (click)="openNew()">
+              <app-icon name="plus" [size]="18" /> Create your first account
+            </button>
           </app-empty-state>
         </section>
       } @else {
         <section class="card card-pad hero">
-          <div><span class="muted">Total balance</span><strong class="big"><app-money [value]="total()" /></strong>
-            <small class="muted">across {{ active().length }} active account{{ active().length === 1 ? '' : 's' }}@if (mixedCurrency()) { · mixed currencies are added without conversion }</small></div>
+          <div>
+            <span class="muted">Total balance</span
+            ><strong class="big"><app-money [value]="total()" /></strong>
+            <small class="muted"
+              >across {{ active().length }} active account{{
+                active().length === 1 ? '' : 's'
+              }}
+              @if (mixedCurrency()) {
+                · mixed currencies are added without conversion
+              }
+            </small>
+          </div>
           <div class="chips">
-            @for (a of active().slice(0, 4); track a.id) { <span class="chip"><app-icon [name]="icon(a.type)" [size]="14" /> {{ a.name }} · {{ a.currentBalance | money: 'compact' : a.currency }}</span> }
+            @for (a of active().slice(0, 4); track a.id) {
+              <span class="chip"
+                ><app-icon [name]="icon(a.type)" [size]="14" /> {{ a.name }} ·
+                {{ a.currentBalance | money: 'compact' : a.currency }}</span
+              >
+            }
           </div>
         </section>
 
         <div class="auto-grid cardgrid">
           @for (a of active(); track a.id; let i = $index) {
-            <article class="card card-pad acct hover" [style.--i]="i" (click)="openEdit(a)" tabindex="0" (keydown.enter)="openEdit(a)">
-              <div class="row"><span class="icon-tile"><app-icon [name]="icon(a.type)" /></span><div class="grow"><strong>{{ a.name }}</strong><small>{{ a.type }} · {{ a.currency }}</small></div>
-                <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Edit account" (click)="$event.stopPropagation(); openEdit(a)"><app-icon name="edit" [size]="15" /></button></div>
-              <strong class="bal" [class.text-danger]="a.currentBalance < 0"><app-money [value]="a.currentBalance" [currency]="a.currency" /></strong>
-              <small class="muted">Opened with {{ a.openingBalance | money: '' : a.currency }}</small>
+            <article
+              class="card card-pad acct hover"
+              [style.--i]="i"
+              (click)="openEdit(a)"
+              tabindex="0"
+              (keydown.enter)="openEdit(a)"
+            >
+              <div class="row">
+                <span class="icon-tile"
+                  ><app-icon [name]="icon(a.type)"
+                /></span>
+                <div class="grow">
+                  <strong>{{ a.name }}</strong
+                  ><small>{{ a.type }} · {{ a.currency }}</small>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-icon btn-sm"
+                  aria-label="Edit account"
+                  (click)="$event.stopPropagation(); openEdit(a)"
+                >
+                  <app-icon name="edit" [size]="15" />
+                </button>
+              </div>
+              <strong class="bal" [class.text-danger]="a.currentBalance < 0"
+                ><app-money [value]="a.currentBalance" [currency]="a.currency"
+              /></strong>
+              <small class="muted"
+                >Opened with
+                {{ a.openingBalance | money: '' : a.currency }}</small
+              >
+              <div
+                class="acct-actions"
+                (click)="$event.stopPropagation()"
+                (keydown.enter)="$event.stopPropagation()"
+              >
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="transferFrom(a)"
+                >
+                  <app-icon name="swap" [size]="15" /> Transfer
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  (click)="openReconcile(a)"
+                >
+                  <app-icon name="check" [size]="15" /> Match balance
+                </button>
+              </div>
             </article>
           }
         </div>
 
         <section class="card card-pad list">
           <div class="card-head">
-            <div><h3 class="card-title"><app-icon name="list" [size]="18" /> All accounts</h3><p class="card-sub">Including archived</p></div>
-            <app-search-box class="srch" [value]="table.search()" (valueChange)="table.setSearch($event)" placeholder="Search accounts" />
+            <div>
+              <h3 class="card-title">
+                <app-icon name="list" [size]="18" /> All accounts
+              </h3>
+              <p class="card-sub">Including archived</p>
+            </div>
+            <app-search-box
+              class="srch"
+              [value]="table.search()"
+              (valueChange)="table.setSearch($event)"
+              placeholder="Search accounts"
+            />
           </div>
 
           @if (table.total() === 0) {
-            <app-empty-state icon="search" title="No accounts match" message="Try a different search.">
-              <button type="button" class="btn btn-secondary btn-sm" (click)="table.setSearch('')">Clear search</button>
+            <app-empty-state
+              icon="search"
+              title="No accounts match"
+              message="Try a different search."
+            >
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                (click)="table.setSearch('')"
+              >
+                Clear search
+              </button>
             </app-empty-state>
           } @else {
             <div class="table-wrap">
               <table class="table">
-                <thead><tr>
-                  <th><app-sort-header label="Account" key="name" [sort]="table.sort()" (toggle)="table.toggleSort($event)" /></th>
-                  <th class="hide-mobile"><app-sort-header label="Type" key="type" [sort]="table.sort()" (toggle)="table.toggleSort($event)" /></th>
-                  <th class="right"><app-sort-header label="Balance" key="balance" align="right" [sort]="table.sort()" (toggle)="table.toggleSort($event)" /></th>
-                  <th class="hide-mobile">Status</th><th style="width: 90px"></th>
-                </tr></thead>
+                <thead>
+                  <tr>
+                    <th>
+                      <app-sort-header
+                        label="Account"
+                        key="name"
+                        [sort]="table.sort()"
+                        (toggle)="table.toggleSort($event)"
+                      />
+                    </th>
+                    <th class="hide-mobile">
+                      <app-sort-header
+                        label="Type"
+                        key="type"
+                        [sort]="table.sort()"
+                        (toggle)="table.toggleSort($event)"
+                      />
+                    </th>
+                    <th class="right">
+                      <app-sort-header
+                        label="Balance"
+                        key="balance"
+                        align="right"
+                        [sort]="table.sort()"
+                        (toggle)="table.toggleSort($event)"
+                      />
+                    </th>
+                    <th class="hide-mobile">Status</th>
+                    <th style="width: 90px"></th>
+                  </tr>
+                </thead>
                 <tbody>
                   @for (a of table.pageItems(); track a.id; let i = $index) {
                     <tr class="clickable" [style.--i]="i" (click)="openEdit(a)">
-                      <td><div class="cell-main"><strong>{{ a.name }}</strong><small>{{ a.currency }}</small></div></td>
+                      <td>
+                        <div class="cell-main">
+                          <strong>{{ a.name }}</strong
+                          ><small>{{ a.currency }}</small>
+                        </div>
+                      </td>
                       <td class="hide-mobile">{{ a.type }}</td>
-                      <td class="right num" [class.text-danger]="a.currentBalance < 0">{{ a.currentBalance | money: '' : a.currency }}</td>
-                      <td class="hide-mobile">@if (a.isArchived) { <span class="badge">Archived</span> } @else { <span class="badge success">Active</span> }</td>
-                      <td class="right"><span class="row-actions">
-                        <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Edit" (click)="$event.stopPropagation(); openEdit(a)"><app-icon name="edit" [size]="15" /></button>
-                        <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Delete" (click)="$event.stopPropagation(); remove(a)"><app-icon name="trash" [size]="15" /></button>
-                      </span></td>
+                      <td
+                        class="right num"
+                        [class.text-danger]="a.currentBalance < 0"
+                      >
+                        {{ a.currentBalance | money: '' : a.currency }}
+                      </td>
+                      <td class="hide-mobile">
+                        @if (a.isArchived) {
+                          <span class="badge">Archived</span>
+                        } @else {
+                          <span class="badge success">Active</span>
+                        }
+                      </td>
+                      <td class="right">
+                        <span class="row-actions">
+                          <button
+                            type="button"
+                            class="btn btn-ghost btn-icon btn-sm"
+                            aria-label="Edit"
+                            (click)="$event.stopPropagation(); openEdit(a)"
+                          >
+                            <app-icon name="edit" [size]="15" />
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn-ghost btn-icon btn-sm"
+                            aria-label="Delete"
+                            (click)="$event.stopPropagation(); remove(a)"
+                          >
+                            <app-icon name="trash" [size]="15" />
+                          </button>
+                        </span>
+                      </td>
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-            <app-paginator [total]="table.total()" [page]="table.currentPage()" [pageSize]="table.pageSize()" (pageChange)="table.setPage($event)" (pageSizeChange)="table.setPageSize($event)" />
+            <app-paginator
+              [total]="table.total()"
+              [page]="table.currentPage()"
+              [pageSize]="table.pageSize()"
+              (pageChange)="table.setPage($event)"
+              (pageSizeChange)="table.setPageSize($event)"
+            />
           }
         </section>
       }
     </div>
 
-    <app-overlay [open]="formOpen()" [title]="editing() ? 'Edit account' : 'New account'" [subtitle]="editing() ? 'Changes apply immediately.' : 'Track a wallet, bank account or card.'" variant="dialog" [width]="480" (closed)="closeForm()">
-      <form [formGroup]="form" (ngSubmit)="save()" novalidate class="stack" id="acct-form">
-        <div class="field"><label for="an">Name</label>
-          <input id="an" class="input" formControlName="name" maxlength="100" placeholder="e.g. HDFC Savings" [class.invalid]="!!err('name')" />
-          @if (err('name'); as e) { <span class="field-error">{{ e }}</span> }</div>
-        <div class="form-grid">
-          <div class="field"><label>Type</label><app-select [options]="types" [value]="form.controls.type.value" (valueChange)="setType($event)" ariaLabel="Account type" /></div>
-          <div class="field"><label>Currency</label>
-            <app-select [options]="currencies" [value]="form.controls.currency.value" [searchable]="true" [disabled]="!!editing()" (valueChange)="setCurrency($event)" ariaLabel="Currency" />
-            @if (editing()) { <span class="field-hint">Currency can't change after creation.</span> }</div>
+    <app-overlay
+      [open]="formOpen()"
+      [title]="editing() ? 'Edit account' : 'New account'"
+      [subtitle]="
+        editing()
+          ? 'Changes apply immediately.'
+          : 'Track a wallet, bank account or card.'
+      "
+      variant="dialog"
+      [width]="480"
+      (closed)="closeForm()"
+    >
+      <form
+        [formGroup]="form"
+        (ngSubmit)="save()"
+        novalidate
+        class="stack"
+        id="acct-form"
+      >
+        <div class="field">
+          <label for="an">Name</label>
+          <input
+            id="an"
+            class="input"
+            formControlName="name"
+            maxlength="100"
+            placeholder="e.g. HDFC Savings"
+            [class.invalid]="!!err('name')"
+          />
+          @if (err('name'); as e) {
+            <span class="field-error">{{ e }}</span>
+          }
         </div>
-        <div class="field"><label for="ob">Opening balance</label>
-          <input id="ob" class="input" type="number" inputmode="decimal" step="0.01" formControlName="openingBalance" [class.invalid]="!!err('openingBalance')" />
-          @if (err('openingBalance'); as e) { <span class="field-error">{{ e }}</span> }</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Type</label
+            ><app-select
+              [options]="types"
+              [value]="form.controls.type.value"
+              (valueChange)="setType($event)"
+              ariaLabel="Account type"
+            />
+          </div>
+          <div class="field">
+            <label>Currency</label>
+            <app-select
+              [options]="currencies"
+              [value]="form.controls.currency.value"
+              [searchable]="true"
+              [disabled]="!!editing()"
+              (valueChange)="setCurrency($event)"
+              ariaLabel="Currency"
+            />
+            @if (editing()) {
+              <span class="field-hint"
+                >Currency can't change after creation.</span
+              >
+            }
+          </div>
+        </div>
+        <div class="field">
+          <label for="ob">Opening balance</label>
+          <input
+            id="ob"
+            class="input"
+            type="number"
+            inputmode="decimal"
+            step="0.01"
+            formControlName="openingBalance"
+            [class.invalid]="!!err('openingBalance')"
+          />
+          @if (err('openingBalance'); as e) {
+            <span class="field-error">{{ e }}</span>
+          }
+        </div>
         @if (editing()) {
-          <label class="check"><input type="checkbox" class="checkbox" [checked]="form.controls.isArchived.value" (change)="form.controls.isArchived.setValue(!form.controls.isArchived.value)" />
-            <span>Archive this account <small>Hidden from pickers; history is kept.</small></span></label>
+          <label class="check"
+            ><input
+              type="checkbox"
+              class="checkbox"
+              [checked]="form.controls.isArchived.value"
+              (change)="
+                form.controls.isArchived.setValue(
+                  !form.controls.isArchived.value
+                )
+              "
+            />
+            <span
+              >Archive this account
+              <small>Hidden from pickers; history is kept.</small></span
+            ></label
+          >
         }
       </form>
       <ng-container footer>
-        <button type="button" class="btn btn-ghost" (click)="closeForm()">Cancel</button>
-        <button type="submit" form="acct-form" class="btn btn-primary" [disabled]="saving()">@if (saving()) { <app-spinner [size]="16" /> } {{ editing() ? 'Save changes' : 'Create account' }}</button>
+        <button type="button" class="btn btn-ghost" (click)="closeForm()">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          form="acct-form"
+          class="btn btn-primary"
+          [disabled]="saving()"
+        >
+          @if (saving()) {
+            <app-spinner [size]="16" />
+          }
+          {{ editing() ? 'Save changes' : 'Create account' }}
+        </button>
+      </ng-container>
+    </app-overlay>
+
+    <app-overlay
+      [open]="reconcileFor() !== null"
+      title="Match balance"
+      [subtitle]="reconcileFor()?.name ?? ''"
+      variant="dialog"
+      [width]="440"
+      (closed)="closeReconcile()"
+    >
+      @if (reconcileFor(); as acct) {
+        <form
+          class="stack"
+          id="reconcile-form"
+          (submit)="$event.preventDefault(); submitReconcile()"
+          novalidate
+        >
+          <p class="muted">
+            The app thinks this account holds
+            <strong
+              ><app-money
+                [value]="acct.currentBalance"
+                [currency]="acct.currency" /></strong
+            >. Enter what it really holds.
+          </p>
+          <div class="field">
+            <label for="actual-balance">Actual balance</label>
+            <input
+              id="actual-balance"
+              class="input"
+              type="number"
+              inputmode="decimal"
+              step="0.01"
+              [value]="actual()"
+              (input)="onActual($event)"
+              autocomplete="off"
+            />
+          </div>
+          @if (difference() !== null) {
+            <p
+              class="diff"
+              [class.text-success]="(difference() ?? 0) > 0"
+              [class.text-danger]="(difference() ?? 0) < 0"
+            >
+              @if (difference() === 0) {
+                Already matches.
+              } @else {
+                Adjustment:
+                <app-money
+                  [value]="difference() ?? 0"
+                  [currency]="acct.currency"
+                />
+              }
+            </p>
+          }
+          <p class="field-hint">
+            This corrects the account's opening balance, so your income,
+            spending and reports are not affected.
+          </p>
+        </form>
+      }
+      <ng-container footer>
+        <button type="button" class="btn btn-ghost" (click)="closeReconcile()">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          form="reconcile-form"
+          class="btn btn-primary"
+          [disabled]="reconciling() || actualNumber() === null"
+        >
+          @if (reconciling()) {
+            <app-spinner [size]="16" />
+          }
+          Match balance
+        </button>
       </ng-container>
     </app-overlay>
   `,
-  styles: [`
-    .hero { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-    .hero > div:first-child { display: flex; flex-direction: column; gap: 2px; }
-    .big { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 850; letter-spacing: -.03em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .cardgrid { margin-bottom: 16px; }
-    .acct { display: flex; flex-direction: column; gap: 10px; cursor: pointer; animation: fadeUp .45s both; animation-delay: calc(var(--i) * 50ms); }
-    .acct .row { align-items: center; }
-    .acct .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .acct small { color: var(--faint); }
-    .bal { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
-    .srch { min-width: min(280px, 100%); }
-    .check { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
-    .check span { display: flex; flex-direction: column; font-weight: 600; }
-    .check small { color: var(--faint); font-weight: 400; }
-  `],
+  styles: [
+    `
+      .acct-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 2px;
+      }
+      .diff {
+        margin: 0;
+        font-weight: 700;
+      }
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .hero > div:first-child {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .big {
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+        font-weight: 850;
+        letter-spacing: -0.03em;
+        background: var(--grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .cardgrid {
+        margin-bottom: 16px;
+      }
+      .acct {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        cursor: pointer;
+        animation: fadeUp 0.45s both;
+        animation-delay: calc(var(--i) * 50ms);
+      }
+      .acct .row {
+        align-items: center;
+      }
+      .acct .grow {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .acct small {
+        color: var(--faint);
+      }
+      .bal {
+        font-size: 1.6rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .srch {
+        min-width: min(280px, 100%);
+      }
+      .check {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        cursor: pointer;
+      }
+      .check span {
+        display: flex;
+        flex-direction: column;
+        font-weight: 600;
+      }
+      .check small {
+        color: var(--faint);
+        font-weight: 400;
+      }
+    `,
+  ],
 })
 export class AccountsComponent {
   private readonly fb = inject(FormBuilder);
@@ -154,6 +566,25 @@ export class AccountsComponent {
   private readonly toast = inject(ToastService);
   private readonly refresh = inject(RefreshService);
   protected readonly refData = inject(ReferenceDataService);
+  private readonly transfersApi = inject(TransfersApi);
+  private readonly txForm = inject(TxFormService);
+
+  protected readonly reconcileFor = signal<AccountDto | null>(null);
+  protected readonly actual = signal('');
+  protected readonly reconciling = signal(false);
+  protected readonly actualNumber = computed(() => {
+    const n = Number(this.actual());
+    return this.actual().trim() !== '' && Number.isFinite(n)
+      ? Math.round(n * 100) / 100
+      : null;
+  });
+  protected readonly difference = computed(() => {
+    const account = this.reconcileFor();
+    const value = this.actualNumber();
+    return account && value !== null
+      ? Math.round((value - account.currentBalance) * 100) / 100
+      : null;
+  });
 
   protected readonly types = TYPE_OPTIONS;
   protected readonly currencies = CURRENCY_OPTIONS;
@@ -162,26 +593,42 @@ export class AccountsComponent {
   protected readonly saving = signal(false);
   private readonly serverErrors = signal<Record<string, string[]>>({});
 
-  protected readonly active = computed(() => this.refData.accounts().filter((a) => !a.isArchived));
-  protected readonly total = computed(() => this.active().reduce((s, a) => s + a.currentBalance, 0));
-  protected readonly mixedCurrency = computed(() => new Set(this.active().map((a) => a.currency)).size > 1);
+  protected readonly active = computed(() =>
+    this.refData.accounts().filter((a) => !a.isArchived),
+  );
+  protected readonly total = computed(() =>
+    this.active().reduce((s, a) => s + a.currentBalance, 0),
+  );
+  protected readonly mixedCurrency = computed(
+    () => new Set(this.active().map((a) => a.currency)).size > 1,
+  );
 
-  protected readonly table = new TableState<AccountDto>(() => this.refData.accounts(), {
-    searchText: (a) => `${a.name} ${a.type} ${a.currency}`,
-    comparers: {
-      name: (a, b) => compareText(a.name, b.name),
-      type: (a, b) => compareText(a.type, b.type),
-      balance: (a, b) => compareNumber(a.currentBalance, b.currentBalance),
+  protected readonly table = new TableState<AccountDto>(
+    () => this.refData.accounts(),
+    {
+      searchText: (a) => `${a.name} ${a.type} ${a.currency}`,
+      comparers: {
+        name: (a, b) => compareText(a.name, b.name),
+        type: (a, b) => compareText(a.type, b.type),
+        balance: (a, b) => compareNumber(a.currentBalance, b.currentBalance),
+      },
+      defaultSort: { key: 'name', dir: 'asc' },
+      storageKey: 'accounts',
     },
-    defaultSort: { key: 'name', dir: 'asc' },
-    storageKey: 'accounts',
-  });
+  );
 
   protected readonly form = this.fb.nonNullable.group({
     name: ['', [Validators.required, Validators.maxLength(100)]],
     type: ['Bank' as AccountType],
     currency: [this.auth.currency(), [Validators.required]],
-    openingBalance: [0, [Validators.required, Validators.min(-1_000_000_000_000), Validators.max(1_000_000_000_000)]],
+    openingBalance: [
+      0,
+      [
+        Validators.required,
+        Validators.min(-1_000_000_000_000),
+        Validators.max(1_000_000_000_000),
+      ],
+    ],
     isArchived: [false],
   });
 
@@ -190,11 +637,15 @@ export class AccountsComponent {
   }
 
   protected setType(value: string | number | null): void {
-    this.form.controls.type.setValue((typeof value === 'string' ? value : 'Bank') as AccountType);
+    this.form.controls.type.setValue(
+      (typeof value === 'string' ? value : 'Bank') as AccountType,
+    );
   }
 
   protected setCurrency(value: string | number | null): void {
-    this.form.controls.currency.setValue(typeof value === 'string' ? value : this.auth.currency());
+    this.form.controls.currency.setValue(
+      typeof value === 'string' ? value : this.auth.currency(),
+    );
   }
 
   protected err(field: 'name' | 'openingBalance'): string | null {
@@ -202,21 +653,36 @@ export class AccountsComponent {
     if (server) return server;
     const c = this.form.controls[field];
     if (!c.invalid || !(c.touched || c.dirty)) return null;
-    if (c.errors?.['required']) return field === 'name' ? 'Enter a name.' : 'Enter a number.';
-    return field === 'name' ? 'Name is too long.' : 'That amount is out of range.';
+    if (c.errors?.['required'])
+      return field === 'name' ? 'Enter a name.' : 'Enter a number.';
+    return field === 'name'
+      ? 'Name is too long.'
+      : 'That amount is out of range.';
   }
 
   protected openNew(): void {
     this.editing.set(null);
     this.serverErrors.set({});
-    this.form.reset({ name: '', type: 'Bank', currency: this.auth.currency(), openingBalance: 0, isArchived: false });
+    this.form.reset({
+      name: '',
+      type: 'Bank',
+      currency: this.auth.currency(),
+      openingBalance: 0,
+      isArchived: false,
+    });
     this.formOpen.set(true);
   }
 
   protected openEdit(account: AccountDto): void {
     this.editing.set(account);
     this.serverErrors.set({});
-    this.form.reset({ name: account.name, type: account.type, currency: account.currency, openingBalance: account.openingBalance, isArchived: account.isArchived });
+    this.form.reset({
+      name: account.name,
+      type: account.type,
+      currency: account.currency,
+      openingBalance: account.openingBalance,
+      isArchived: account.isArchived,
+    });
     this.formOpen.set(true);
   }
 
@@ -234,8 +700,19 @@ export class AccountsComponent {
     this.serverErrors.set({});
 
     const call$ = existing
-      ? this.api.update(existing.id, { name: v.name.trim(), type: v.type, openingBalance: v.openingBalance, isArchived: v.isArchived, version: existing.version })
-      : this.api.create({ name: v.name.trim(), type: v.type, currency: v.currency, openingBalance: v.openingBalance });
+      ? this.api.update(existing.id, {
+          name: v.name.trim(),
+          type: v.type,
+          openingBalance: v.openingBalance,
+          isArchived: v.isArchived,
+          version: existing.version,
+        })
+      : this.api.create({
+          name: v.name.trim(),
+          type: v.type,
+          currency: v.currency,
+          openingBalance: v.openingBalance,
+        });
 
     call$.subscribe({
       next: () => {
@@ -248,17 +725,60 @@ export class AccountsComponent {
       error: (err: unknown) => {
         const e = ApiError.from(err);
         this.saving.set(false);
-        if (e.code === 'account_name_taken') this.serverErrors.set({ name: ['You already have an account with this name.'] });
+        if (e.code === 'account_name_taken')
+          this.serverErrors.set({
+            name: ['You already have an account with this name.'],
+          });
         else if (e.hasFieldErrors) this.serverErrors.set(e.errors);
         if (e.code === 'concurrency_conflict') this.refData.load().subscribe();
       },
     });
   }
 
+  protected transferFrom(account: AccountDto): void {
+    this.txForm.openTransfer({ fromAccountId: account.id });
+  }
+
+  protected openReconcile(account: AccountDto): void {
+    this.actual.set(String(account.currentBalance));
+    this.reconcileFor.set(account);
+  }
+
+  protected closeReconcile(): void {
+    if (!this.reconciling()) this.reconcileFor.set(null);
+  }
+
+  protected onActual(event: Event): void {
+    this.actual.set((event.target as HTMLInputElement).value);
+  }
+
+  protected submitReconcile(): void {
+    const account = this.reconcileFor();
+    const value = this.actualNumber();
+    if (!account || value === null || this.reconciling()) return;
+
+    this.reconciling.set(true);
+    this.transfersApi
+      .reconcile(account.id, { actualBalance: value })
+      .subscribe({
+        next: (result) => {
+          this.reconciling.set(false);
+          this.reconcileFor.set(null);
+          this.toast.success(
+            result.adjustment === 0 ? 'Already matched.' : 'Balance matched.',
+          );
+          this.refData.load().subscribe();
+          this.refresh.bump();
+        },
+        error: () => this.reconciling.set(false),
+      });
+  }
+
   protected async remove(account: AccountDto): Promise<void> {
     const ok = await this.confirm.confirm({
       title: `Delete “${account.name}”?`,
-      message: 'This only works for accounts with no transactions. Otherwise archive it to keep your history.',
+      message:
+        'This only works for accounts with no transactions. Otherwise archive it to keep your history.',
       confirmText: 'Delete',
       tone: 'danger',
     });
@@ -271,7 +791,8 @@ export class AccountsComponent {
         this.refresh.bump();
       },
       error: (err: unknown) => {
-        if (ApiError.from(err).code === 'account_in_use') this.openEdit(account);
+        if (ApiError.from(err).code === 'account_in_use')
+          this.openEdit(account);
       },
     });
   }

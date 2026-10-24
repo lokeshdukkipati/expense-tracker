@@ -66,6 +66,8 @@ public sealed record ImportPreviewDto(
     IReadOnlyList<DuplicateRowDto> DuplicateSamples,
     IReadOnlyList<ImportWarningDto> Warnings,
     IReadOnlyList<FileAccountDto> FileAccounts,
-    IReadOnlyList<FileCategoryDto> FileCategories);
+    IReadOnlyList<FileCategoryDto> FileCategories,
+    int NewTransfers,
+    decimal NewTransferTotal);
 
-public sealed record ImportResultDto(ImportBatchDto Batch, int AccountsCreated, int CategoriesCreated);
+public sealed record ImportResultDto(ImportBatchDto Batch, int AccountsCreated, int CategoriesCreated, int TransfersCreated);

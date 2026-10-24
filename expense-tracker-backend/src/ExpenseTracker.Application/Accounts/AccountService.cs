@@ -126,24 +126,9 @@ public sealed class AccountService(
         }
     }
 
-    /// <summary>Net movement per account: income minus expenses of non-deleted transactions.</summary>
-    private async Task<Dictionary<Guid, decimal>> LoadMovementsAsync(Guid userId, Guid? accountId, CancellationToken cancellationToken)
-    {
-        var rows = await db.Transactions.AsNoTracking()
-            .Where(t => t.UserId == userId && (accountId == null || t.AccountId == accountId))
-            .GroupBy(t => new { t.AccountId, t.Type })
-            .Select(g => new { g.Key.AccountId, g.Key.Type, Total = g.Sum(x => x.Amount) })
-            .ToListAsync(cancellationToken);
-
-        var result = new Dictionary<Guid, decimal>();
-        foreach (var row in rows)
-        {
-            var signed = row.Type == TransactionType.Income ? row.Total : -row.Total;
-            result[row.AccountId] = result.GetValueOrDefault(row.AccountId) + signed;
-        }
-
-        return result;
-    }
+    /// <summary>Net movement per account (income and incoming transfers minus expenses and outgoing transfers).</summary>
+    private Task<Dictionary<Guid, decimal>> LoadMovementsAsync(Guid userId, Guid? accountId, CancellationToken cancellationToken) =>
+        AccountBalances.LoadMovementsAsync(db, userId, accountId, cancellationToken);
 
     private static AccountDto ToDto(Account a, decimal movement) => new(
         a.Id, a.Name, a.Type, a.Currency, a.OpeningBalance, a.OpeningBalance + movement, a.IsArchived, a.RowVersion);

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using ExpenseTracker.Application.Abstractions;
 using ExpenseTracker.Application.Common;
+using ExpenseTracker.Application.Rules;
 using ExpenseTracker.Domain.Entities;
 using ExpenseTracker.Domain.Enums;
 using ExpenseTracker.Domain.Exceptions;
@@ -37,7 +38,8 @@ public sealed class ImportService(
         IReadOnlyList<InvalidRow> Invalid,
         IReadOnlyList<ImportWarningDto> Warnings,
         ImportMatchMode MatchMode,
-        TimeZoneInfo Zone)
+        TimeZoneInfo Zone,
+        IReadOnlyList<Guid?> RuleIds)
     {
         public int DuplicateCount => Matches.Count(m => m is not null);
 
@@ -81,14 +83,17 @@ public sealed class ImportService(
             }
         }
 
+        // A transfer row touches two accounts: the source (Account) and the destination (Category).
         var fileAccounts = newRows
-            .GroupBy(r => r.Account, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new FileAccountDto(g.First().Account, g.Count(), Lookup(accountIdByName, g.Key)))
+            .SelectMany(r => r.Type == TransactionType.TransferOut ? new[] { r.Account, r.Category } : new[] { r.Account })
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new FileAccountDto(g.First(), g.Count(), Lookup(accountIdByName, g.Key)))
             .OrderByDescending(a => a.Rows)
             .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var fileCategories = newRows
+            .Where(r => r.Type != TransactionType.TransferOut)
             .GroupBy(r => $"{r.Type}|{r.Category}", StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
@@ -102,6 +107,11 @@ public sealed class ImportService(
         var newCategories = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in newRows)
         {
+            if (row.Type == TransactionType.TransferOut)
+            {
+                continue;
+            }
+
             if (!knownCategoryKeys.Contains(CategoryLabelKey(row.Type, null, row.Category)))
             {
                 newCategories.Add(row.Category);
@@ -145,6 +155,8 @@ public sealed class ImportService(
             LastDate: last,
             NewIncomeTotal: newRows.Where(r => r.Type == TransactionType.Income).Sum(r => r.Amount),
             NewExpenseTotal: newRows.Where(r => r.Type == TransactionType.Expense).Sum(r => r.Amount),
+            NewTransfers: newRows.Count(r => r.Type == TransactionType.TransferOut),
+            NewTransferTotal: newRows.Where(r => r.Type == TransactionType.TransferOut).Sum(r => r.Amount),
             NewAccounts: fileAccounts.Where(a => a.MatchedAccountId is null).Select(a => a.Name).ToList(),
             NewCategories: newCategories.ToList(),
             SampleNewRows: newRows.Take(PreviewNewRows)
@@ -185,6 +197,7 @@ public sealed class ImportService(
         var batchId = Guid.CreateVersion7();
         var accountsCreated = 0;
         var categoriesCreated = 0;
+        var transfersCreated = 0;
 
         var fileName = Path.GetFileName(prepared.FileName);
         if (fileName.Length > 260)
@@ -198,6 +211,7 @@ public sealed class ImportService(
         {
             accountsCreated = 0;
             _categoriesCreated = 0;
+            transfersCreated = 0;
 
             var accountIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var accountArchived = new Dictionary<Guid, bool>();
@@ -245,7 +259,7 @@ public sealed class ImportService(
                 foreach (var (key, id) in categoryMappings)
                 {
                     var separator = key.IndexOf('|');
-                    if (separator <= 0 || !Enum.TryParse<TransactionType>(key[..separator], true, out var mappedType) || !Enum.IsDefined(mappedType))
+                    if (separator <= 0 || !Enum.TryParse<TransactionType>(key[..separator], true, out var mappedType) || mappedType is not (TransactionType.Expense or TransactionType.Income))
                     {
                         throw new BusinessRuleException("A category mapping is not valid.", "invalid_mapping");
                     }
@@ -269,25 +283,100 @@ public sealed class ImportService(
                 }
             }
 
+            // Transfers use the hidden system category: find it, or add it (saved with the other lookups below).
+            Guid? transferCategoryId = null;
+            if (newIndexes.Any(i => prepared.Rows[i].Type == TransactionType.TransferOut))
+            {
+                transferCategoryId = await db.Categories
+                    .Where(c => c.UserId == userId && c.IsSystem && c.Type == TransactionType.TransferOut)
+                    .Select(c => (Guid?)c.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (transferCategoryId is null)
+                {
+                    var systemCategory = new Category
+                    {
+                        UserId = userId,
+                        Name = "Transfer",
+                        Type = TransactionType.TransferOut,
+                        Color = "#64748B",
+                        IsSystem = true
+                    };
+                    db.Categories.Add(systemCategory);
+                    transferCategoryId = systemCategory.Id;
+                }
+            }
+
+            Guid ResolveAccount(string name, string currency)
+            {
+                if (accountMap.TryGetValue(name, out var mapped) || accountIds.TryGetValue(name, out mapped))
+                {
+                    return mapped;
+                }
+
+                var account = new Account
+                {
+                    UserId = userId,
+                    Name = name,
+                    Type = name.Contains("cash", StringComparison.OrdinalIgnoreCase) ? AccountType.Cash : AccountType.Bank,
+                    Currency = currency
+                };
+                db.Accounts.Add(account);
+                accountIds[name] = account.Id;
+                accountsCreated++;
+                return account.Id;
+            }
+
             var pending = new List<Transaction>(newIndexes.Count);
 
             foreach (var index in newIndexes)
             {
                 var row = prepared.Rows[index];
+                var accountId = ResolveAccount(row.Account, row.Currency);
 
-                if (!accountMap.TryGetValue(row.Account, out var accountId) && !accountIds.TryGetValue(row.Account, out accountId))
+                if (row.Type == TransactionType.TransferOut)
                 {
-                    var account = new Account
+                    // One file row becomes two linked legs. Both carry the batch id, so undoing the import removes both.
+                    var toAccountId = ResolveAccount(row.Category, row.Currency);
+                    var occurredAt = TimeZones.ToUtc(row.LocalTimestamp, prepared.Zone);
+                    var groupId = Guid.CreateVersion7();
+
+                    pending.Add(new Transaction
                     {
                         UserId = userId,
-                        Name = row.Account,
-                        Type = row.Account.Contains("cash", StringComparison.OrdinalIgnoreCase) ? AccountType.Cash : AccountType.Bank,
-                        Currency = row.Currency
-                    };
-                    db.Accounts.Add(account);
-                    accountIds[row.Account] = account.Id;
-                    accountId = account.Id;
-                    accountsCreated++;
+                        AccountId = accountId,
+                        CategoryId = transferCategoryId!.Value,
+                        Type = TransactionType.TransferOut,
+                        Amount = row.Amount,
+                        Currency = row.Currency,
+                        OccurredAt = occurredAt,
+                        Description = row.Description,
+                        Note = row.Note,
+                        Source = TransactionSource.Import,
+                        ImportBatchId = batchId,
+                        Fingerprint = prepared.Fingerprints[index],
+                        TransferGroupId = groupId
+                    });
+
+                    pending.Add(new Transaction
+                    {
+                        UserId = userId,
+                        AccountId = toAccountId,
+                        CategoryId = transferCategoryId!.Value,
+                        Type = TransactionType.TransferIn,
+                        Amount = row.Amount,
+                        Currency = row.Currency,
+                        OccurredAt = occurredAt,
+                        Description = row.Description,
+                        Note = row.Note,
+                        Source = TransactionSource.Import,
+                        ImportBatchId = batchId,
+                        Fingerprint = DerivePartnerFingerprint(prepared.Fingerprints[index]),
+                        TransferGroupId = groupId
+                    });
+
+                    transfersCreated++;
+                    continue;
                 }
 
                 Guid categoryId;
@@ -347,6 +436,16 @@ public sealed class ImportService(
                 await db.SaveChangesAsync(cancellationToken);
                 db.ChangeTracker.Clear(); // keeps memory flat for large files
             }
+
+            // Keeps the "used N times" counter on category rules up to date.
+            foreach (var group in newIndexes.Select(i => prepared.RuleIds[i]).Where(id => id is not null).GroupBy(id => id!.Value))
+            {
+                var ruleId = group.Key;
+                var hits = group.Count();
+                await db.CategoryRules
+                    .Where(r => r.Id == ruleId && r.UserId == userId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.TimesApplied, r => r.TimesApplied + hits), cancellationToken);
+            }
         }, cancellationToken);
 
         categoriesCreated = _categoriesCreated;
@@ -357,7 +456,7 @@ public sealed class ImportService(
             duplicateCount, prepared.Invalid.Count,
             ImportStatus.Completed, clock.GetUtcNow());
 
-        return new ImportResultDto(batch, accountsCreated, categoriesCreated);
+        return new ImportResultDto(batch, accountsCreated, categoriesCreated, transfersCreated);
     }
 
     public async Task<IReadOnlyList<ImportBatchDto>> ListBatchesAsync(CancellationToken cancellationToken)
@@ -451,12 +550,16 @@ public sealed class ImportService(
         var defaultCurrency = await db.Users.AsNoTracking()
             .Where(u => u.Id == userId).Select(u => u.DefaultCurrency).FirstAsync(cancellationToken);
 
-        var valid = new List<ParsedRow>(parsed.Rows.Count);
         var invalid = new List<InvalidRow>(parsed.Invalid);
+
+        // Transfer rows are matched up (or split) first, so everything after sees exactly one row per transfer.
+        var sourceRows = TransferRowPairer.Pair(parsed.Rows, invalid);
+
+        var valid = new List<ParsedRow>(sourceRows.Count);
         var warnings = new List<ImportWarningDto>();
         var futureLimit = clock.GetUtcNow().UtcDateTime.AddDays(2);
 
-        foreach (var row in parsed.Rows)
+        foreach (var row in sourceRows)
         {
             var normalized = row with
             {
@@ -526,9 +629,75 @@ public sealed class ImportService(
 
         var matches = DuplicateMatcher.Match(valid, fingerprints, existing, candidates, run.MatchMode, zone);
 
-        return new Prepared(file.FileName, fileHash, parsed.Format, valid, fingerprints, matches,
-            invalid.OrderBy(i => i.RowNumber).ToList(), warnings, run.MatchMode, zone);
+        // Rules run after duplicate detection, so a row's fingerprint never changes when the user edits a rule.
+        // A matching rule overrides the file's category (the user's explicit choice wins).
+        var (orderedRules, ruleTargets) = await LoadRulesAsync(userId, cancellationToken);
+        var finalRows = new List<ParsedRow>(valid.Count);
+        var ruleIds = new List<Guid?>(valid.Count);
+        foreach (var row in valid)
+        {
+            var rule = (row.Type is TransactionType.Expense or TransactionType.Income)
+                ? CategoryRuleMatcher.FindFirst(orderedRules, row.Type, row.Description ?? row.Note)
+                : null;
+
+            if (rule is not null && ruleTargets.TryGetValue(rule.Id, out var target))
+            {
+                finalRows.Add(row with { Category = target.Category, Subcategory = target.Subcategory });
+                ruleIds.Add(rule.Id);
+            }
+            else
+            {
+                finalRows.Add(row);
+                ruleIds.Add(null);
+            }
+        }
+
+        return new Prepared(file.FileName, fileHash, parsed.Format, finalRows, fingerprints, matches,
+            invalid.OrderBy(i => i.RowNumber).ToList(), warnings, run.MatchMode, zone, ruleIds);
     }
+
+    /// <summary>Active rules in matching order, plus the category (and subcategory) name each one assigns.</summary>
+    private async Task<(IReadOnlyList<RuleCandidate> Ordered, Dictionary<Guid, (string Category, string? Subcategory)> Targets)> LoadRulesAsync(
+        Guid userId, CancellationToken cancellationToken)
+    {
+        var rules = await db.CategoryRules.AsNoTracking()
+            .Where(r => r.UserId == userId && r.IsActive && !r.Category.IsArchived)
+            .Select(r => new
+            {
+                r.Id,
+                r.Pattern,
+                r.MatchType,
+                r.Type,
+                r.Priority,
+                r.CategoryId,
+                CategoryName = r.Category.Name,
+                ParentName = r.Category.Parent == null ? null : r.Category.Parent.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        var candidates = new List<RuleCandidate>(rules.Count);
+        var targets = new Dictionary<Guid, (string Category, string? Subcategory)>(rules.Count);
+
+        foreach (var rule in rules)
+        {
+            candidates.Add(new RuleCandidate(rule.Id, rule.Pattern, rule.MatchType, rule.Type, rule.Priority, rule.CategoryId));
+
+            if (rule.ParentName is null)
+            {
+                targets[rule.Id] = (rule.CategoryName, null);
+            }
+            else
+            {
+                targets[rule.Id] = (rule.ParentName, rule.CategoryName);
+            }
+        }
+
+        return (CategoryRuleMatcher.Order(candidates), targets);
+    }
+
+    /// <summary>The in leg of an imported transfer needs its own unique fingerprint; derived, so it is stable across re-imports.</summary>
+    private static string DerivePartnerFingerprint(string fingerprint) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fingerprint + "|in"))).ToLowerInvariant();
 
     /// <summary>Includes soft-deleted rows, so a row the user deleted is never silently re-imported.</summary>
     private async Task<HashSet<string>> LoadExistingFingerprintsAsync(
@@ -596,7 +765,9 @@ public sealed class ImportService(
 
         if (row.Category.Length is 0 or > 100)
         {
-            return "Category name must be 1-100 characters.";
+            return row.Type == TransactionType.TransferOut
+                ? "The other account's name must be 1-100 characters."
+                : "Category name must be 1-100 characters.";
         }
 
         if (row.Subcategory is { Length: > 100 })

@@ -14,6 +14,8 @@ public interface IAppDbContext
     DbSet<Transaction> Transactions { get; }
     DbSet<ImportBatch> ImportBatches { get; }
     DbSet<Budget> Budgets { get; }
+    DbSet<SavingsGoal> SavingsGoals { get; }
+    DbSet<CategoryRule> CategoryRules { get; }
 
     /// <summary>Exposed for explicit transactions and execution strategies (bulk import).</summary>
     DatabaseFacade Database { get; }

@@ -116,8 +116,8 @@ public sealed class MoneyManagerXlsxParser : IImportParser
             if (type is null)
             {
                 var reason = rawType.Trim().StartsWith("transfer", StringComparison.OrdinalIgnoreCase)
-                    ? "Transfers between accounts are not supported yet."
-                    : $"Unknown type '{rawType.Trim()}'. Expected Income or Exp.";
+                    ? $"Unknown transfer type '{rawType.Trim()}'. Expected Transfer-Out or Transfer-In."
+                    : $"Unknown type '{rawType.Trim()}'. Expected Income, Exp., Transfer-Out or Transfer-In.";
                 invalid.Add(new InvalidRow(rowNumber, reason));
                 continue;
             }
@@ -142,7 +142,8 @@ public sealed class MoneyManagerXlsxParser : IImportParser
                 Amount: amount.Value,
                 Currency: Text(sheet, rowNumber, currencyColumn) ?? string.Empty,
                 Account: Text(sheet, rowNumber, accountColumn) ?? DefaultAccount,
-                Category: Text(sheet, rowNumber, categoryColumn) ?? DefaultCategory,
+                Category: Text(sheet, rowNumber, categoryColumn)
+                          ?? (type is TransactionType.TransferOut or TransactionType.TransferIn ? string.Empty : DefaultCategory),
                 Subcategory: Text(sheet, rowNumber, subcategoryColumn),
                 Description: Text(sheet, rowNumber, descriptionColumn),
                 Note: Text(sheet, rowNumber, noteColumn)));
@@ -213,6 +214,8 @@ public sealed class MoneyManagerXlsxParser : IImportParser
         {
             "exp" or "expense" or "expenses" => TransactionType.Expense,
             "income" or "inc" => TransactionType.Income,
+            "transfer-out" or "transfer out" or "transfer_out" or "transferout" => TransactionType.TransferOut,
+            "transfer-in" or "transfer in" or "transfer_in" or "transferin" => TransactionType.TransferIn,
             _ => null
         };
 

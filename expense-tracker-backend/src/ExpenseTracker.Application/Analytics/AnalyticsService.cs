@@ -465,8 +465,10 @@ public sealed class AnalyticsService(
 
     private IQueryable<Transaction> Query(Scope scope, AnalyticsFilter filter, DateTimeOffset startUtc, DateTimeOffset endUtc)
     {
+        // Moving money between your own accounts is neither income nor spending, so analytics never see it.
         var query = db.Transactions.AsNoTracking()
-            .Where(t => t.UserId == scope.UserId && t.OccurredAt >= startUtc && t.OccurredAt < endUtc);
+            .Where(t => t.UserId == scope.UserId && t.OccurredAt >= startUtc && t.OccurredAt < endUtc
+                        && t.Type != TransactionType.TransferOut && t.Type != TransactionType.TransferIn);
 
         if (filter.AccountId is { } accountId)
         {

@@ -1,6 +1,16 @@
 // Mirrors the backend DTOs (camelCase JSON, enums as strings, DateOnly as "YYYY-MM-DD").
 
 export type TransactionType = 'Expense' | 'Income';
+/** What a stored transaction can be: income, an expense, or one leg of a transfer between the user's own accounts. */
+export type TransactionKind = TransactionType | 'TransferOut' | 'TransferIn';
+export type ThemeMode = 'dark' | 'light' | 'system';
+export type AccentName =
+  | 'violet'
+  | 'ocean'
+  | 'emerald'
+  | 'sunset'
+  | 'rose'
+  | 'amber';
 export type AccountType = 'Cash' | 'Bank' | 'Card' | 'Wallet' | 'Investment' | 'Other';
 export type TransactionSource = 'Manual' | 'Import';
 export type BudgetPeriod = 'Weekly' | 'Monthly' | 'Yearly';
@@ -44,11 +54,28 @@ export interface UpdateCategoryRequest { name: string; color: string | null; ico
 
 // ---------------------------------------------------------------- transactions
 export interface TransactionDto {
-  id: string; accountId: string; accountName: string;
-  categoryId: string; categoryName: string; parentCategoryId: string | null; parentCategoryName: string | null;
-  type: TransactionType; amount: number; currency: string; occurredAt: string;
-  description: string | null; note: string | null; tags: string[];
-  source: TransactionSource; createdAt: string; version: number;
+  id: string;
+  accountId: string;
+  accountName: string;
+  categoryId: string;
+  categoryName: string;
+  parentCategoryId: string | null;
+  parentCategoryName: string | null;
+  type: TransactionKind;
+  amount: number;
+  currency: string;
+  occurredAt: string;
+  description: string | null;
+  note: string | null;
+  tags: string[];
+  source: TransactionSource;
+  createdAt: string;
+  version: number;
+  /** Set on both legs of a transfer; null for ordinary income and expenses. */
+  transferGroupId: string | null;
+  /** The account on the other side of the transfer. */
+  transferAccountId: string | null;
+  transferAccountName: string | null;
 }
 export interface TransactionInput {
   accountId: string; categoryId: string; type: TransactionType; amount: number; occurredAt: string;
@@ -57,8 +84,16 @@ export interface TransactionInput {
 export interface UpdateTransactionInput extends TransactionInput { version: number }
 
 export interface TransactionFilterParams {
-  from?: string; to?: string; type?: TransactionType | null; accountId?: string | null; categoryId?: string | null;
-  search?: string; minAmount?: number | null; maxAmount?: number | null; tag?: string; source?: TransactionSource | null;
+  from?: string;
+  to?: string;
+  type?: TransactionKind | null;
+  accountId?: string | null;
+  categoryId?: string | null;
+  search?: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  tag?: string;
+  source?: TransactionSource | null;
 }
 export interface TransactionQueryParams extends TransactionFilterParams {
   page: number; pageSize: number; sortBy: 'date' | 'amount'; sortDir: 'asc' | 'desc';
@@ -70,8 +105,15 @@ export interface ImportBatchDto {
   duplicateRows: number; invalidRows: number; status: ImportStatus; createdAt: string;
 }
 export interface ImportRowSampleDto {
-  rowNumber: number; localTimestamp: string; type: TransactionType; amount: number; currency: string;
-  account: string; category: string; subcategory: string | null; description: string | null;
+  rowNumber: number;
+  localTimestamp: string;
+  type: TransactionKind;
+  amount: number;
+  currency: string;
+  account: string;
+  category: string;
+  subcategory: string | null;
+  description: string | null;
 }
 export interface InvalidRowDto {
   rowNumber: number;
@@ -81,7 +123,7 @@ export type ImportMatchMode = 'Exact' | 'Smart' | 'Loose';
 export interface DuplicateRowDto {
   rowNumber: number;
   localTimestamp: string;
-  type: TransactionType;
+  type: TransactionKind;
   amount: number;
   currency: string;
   description: string | null;
@@ -130,8 +172,15 @@ export interface ImportPreviewDto {
   warnings: ImportWarningDto[];
   fileAccounts: FileAccountDto[];
   fileCategories: FileCategoryDto[];
+  newTransfers: number;
+  newTransferTotal: number;
 }
-export interface ImportResultDto { batch: ImportBatchDto; accountsCreated: number; categoriesCreated: number }
+export interface ImportResultDto {
+  batch: ImportBatchDto;
+  accountsCreated: number;
+  categoriesCreated: number;
+  transfersCreated: number;
+}
 
 // ---------------------------------------------------------------- budgets
 export interface BudgetDto {
@@ -179,7 +228,273 @@ export interface ForecastDto {
 export interface CategoryComparisonDto {
   categoryId: string; name: string; color: string | null; current: number; previous: number; change: number; changePercent: number | null;
 }
-export interface TagStatDto { tag: string; expense: number; income: number; count: number }
+export interface TagStatDto {
+  tag: string;
+  expense: number;
+  income: number;
+  count: number;
+}
+
+// ---------------------------------------------------------------- transfers
+export interface TransferDto {
+  groupId: string;
+  fromAccountId: string;
+  fromAccountName: string;
+  toAccountId: string;
+  toAccountName: string;
+  amount: number;
+  currency: string;
+  occurredAt: string;
+  description: string | null;
+  note: string | null;
+  tags: string[];
+  outTransactionId: string;
+  inTransactionId: string;
+  version: number;
+}
+export interface TransferResultDto {
+  transfer: TransferDto;
+  feeTransactionId: string | null;
+}
+export interface CreateTransferRequest {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  occurredAt: string;
+  description: string | null;
+  note: string | null;
+  tags: string[] | null;
+  /** An optional fee (for example an ATM charge), recorded as a separate expense on the source account. */
+  fee?: number | null;
+  feeCategoryId?: string | null;
+}
+export interface UpdateTransferRequest {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  occurredAt: string;
+  description: string | null;
+  note: string | null;
+  tags: string[] | null;
+  version: number;
+}
+export interface ConvertToTransferRequest {
+  otherAccountId: string;
+  version: number;
+}
+export interface ReconcileAccountRequest {
+  actualBalance: number;
+}
+export interface ReconcileResultDto {
+  accountId: string;
+  previousBalance: number;
+  newBalance: number;
+  adjustment: number;
+  openingBalance: number;
+}
+
+// ---------------------------------------------------------------- savings goals
+export type GoalStatus =
+  | 'completed'
+  | 'on_track'
+  | 'behind'
+  | 'overdue'
+  | 'no_deadline';
+export interface GoalDto {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  remainingAmount: number;
+  progressPercent: number;
+  currency: string;
+  targetDate: string | null;
+  daysLeft: number | null;
+  requiredPerMonth: number | null;
+  projectedDate: string | null;
+  status: GoalStatus;
+  isCompleted: boolean;
+  completedAt: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  color: string | null;
+  icon: string | null;
+  isArchived: boolean;
+  version: number;
+}
+export interface CreateGoalRequest {
+  name: string;
+  targetAmount: number;
+  initialAmount: number | null;
+  targetDate: string | null;
+  accountId: string | null;
+  color: string | null;
+  icon: string | null;
+}
+export interface UpdateGoalRequest {
+  name: string;
+  targetAmount: number;
+  targetDate: string | null;
+  accountId: string | null;
+  color: string | null;
+  icon: string | null;
+  isArchived: boolean;
+  version: number;
+}
+export interface ContributeGoalRequest {
+  amount: number;
+}
+
+// ---------------------------------------------------------------- category rules
+export type RuleMatchType = 'Contains' | 'StartsWith' | 'Equals';
+export interface RuleDto {
+  id: string;
+  pattern: string;
+  matchType: RuleMatchType;
+  type: TransactionType;
+  categoryId: string;
+  categoryName: string;
+  parentCategoryName: string | null;
+  priority: number;
+  isActive: boolean;
+  timesApplied: number;
+  version: number;
+}
+export interface CreateRuleRequest {
+  pattern: string;
+  matchType: RuleMatchType;
+  type: TransactionType;
+  categoryId: string;
+  priority?: number;
+}
+export interface UpdateRuleRequest {
+  pattern: string;
+  matchType: RuleMatchType;
+  categoryId: string;
+  priority: number;
+  isActive: boolean;
+  version: number;
+}
+export interface RuleMatchDto {
+  ruleId: string;
+  pattern: string;
+  categoryId: string;
+  categoryName: string;
+  parentCategoryName: string | null;
+}
+export interface RuleMatchResultDto {
+  match: RuleMatchDto | null;
+}
+export interface ApplyRuleRequest {
+  dryRun: boolean;
+}
+export interface ApplyRuleResultDto {
+  matchedCount: number;
+  updatedCount: number;
+}
+
+// ---------------------------------------------------------------- net worth
+export interface NetWorthAccountDto {
+  id: string;
+  name: string;
+  type: AccountType;
+  currency: string;
+  balance: number;
+  isArchived: boolean;
+  includedInTotal: boolean;
+}
+export interface NetWorthTypeDto {
+  type: AccountType;
+  total: number;
+  accounts: number;
+}
+export interface NetWorthPointDto {
+  monthEnd: string;
+  assets: number;
+  liabilities: number;
+  netWorth: number;
+}
+export interface NetWorthDto {
+  currency: string;
+  netWorth: number;
+  assets: number;
+  liabilities: number;
+  monthlyChange: number;
+  monthlyChangePercent: number | null;
+  excludedAccounts: number;
+  accounts: NetWorthAccountDto[];
+  byType: NetWorthTypeDto[];
+  history: NetWorthPointDto[];
+}
+
+// ---------------------------------------------------------------- streaks and badges
+export type BadgeTier = 'bronze' | 'silver' | 'gold';
+export interface StreakDto {
+  current: number;
+  best: number;
+  unit: 'days' | 'months';
+  available: boolean;
+}
+export interface BadgeDto {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  tier: BadgeTier;
+  group: string;
+  isEarned: boolean;
+  progress: number;
+  target: number;
+}
+export interface AchievementsDto {
+  logging: StreakDto;
+  noSpend: StreakDto;
+  budget: StreakDto;
+  noSpendDaysLast30: number;
+  earnedCount: number;
+  totalCount: number;
+  badges: BadgeDto[];
+}
+
+// ---------------------------------------------------------------- duplicates and sample data
+export interface DuplicateChargeDto {
+  key: string;
+  firstId: string;
+  secondId: string;
+  firstAt: string;
+  secondAt: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  accountName: string;
+  categoryName: string;
+  minutesApart: number;
+  confidence: 'high' | 'medium' | 'low';
+}
+export interface SampleDataStatusDto {
+  isLoaded: boolean;
+  accountCount: number;
+  transactionCount: number;
+}
+
+// ---------------------------------------------------------------- user preferences (saved on the account)
+export interface DashboardLayout {
+  order: string[];
+  hidden: string[];
+}
+export interface UserPreferences {
+  theme?: ThemeMode;
+  accent?: AccentName;
+  reduceMotion?: boolean;
+  dashboardLayout?: DashboardLayout;
+  onboardingDone?: boolean;
+  seenBadges?: string[];
+  dismissedDuplicates?: string[];
+}
+/** A preferences update: a key set to null is removed. */
+export type PreferencesPatch = {
+  [K in keyof UserPreferences]?: UserPreferences[K] | null;
+};
 
 // ---------------------------------------------------------------- errors
 export interface ProblemDetails {

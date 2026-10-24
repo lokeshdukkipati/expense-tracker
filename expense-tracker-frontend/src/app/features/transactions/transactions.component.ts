@@ -136,7 +136,7 @@ const SORTS: SelectOption[] = [
               <app-segmented
                 class="block"
                 [options]="typeOptions"
-                [value]="type() ?? 'all'"
+                [value]="typeValue()"
                 (valueChange)="setType($event)"
               />
             </div>
@@ -267,6 +267,8 @@ const SORTS: SelectOption[] = [
                 [sortDir]="sortDir()"
                 (sortToggle)="toggleSort($event)"
                 (rowClick)="txForm.openEdit($event)"
+                [swipeActions]="true"
+                (rowDelete)="deleteOne($event)"
               />
               <app-paginator
                 [total]="page.totalCount"
@@ -529,6 +531,7 @@ export class TransactionsComponent {
     { value: 'all', label: 'All' },
     { value: 'Expense', label: 'Expense' },
     { value: 'Income', label: 'Income' },
+    { value: 'Transfer', label: 'Transfer' },
   ];
   protected readonly sourceOptions: SegmentOption[] = [
     { value: 'all', label: 'All' },
@@ -539,6 +542,11 @@ export class TransactionsComponent {
   protected readonly range = this.timeline.range;
   protected readonly search = signal('');
   protected readonly type = signal<TransactionType | null>(null);
+  /** Shows each transfer once (its outgoing side). */
+  protected readonly transfersOnly = signal(false);
+  protected readonly typeValue = computed(() =>
+    this.transfersOnly() ? 'Transfer' : (this.type() ?? 'all'),
+  );
   protected readonly source = signal<TransactionSource | null>(null);
   protected readonly accountId = signal<string | null>(null);
   protected readonly categoryId = signal<string | null>(null);
@@ -575,7 +583,7 @@ export class TransactionsComponent {
   private readonly filter = computed<TransactionFilterParams>(() => ({
     from: this.range().from,
     to: this.range().to,
-    type: this.type(),
+    type: this.transfersOnly() ? 'TransferOut' : this.type(),
     source: this.source(),
     accountId: this.accountId(),
     categoryId: this.categoryId(),
@@ -588,7 +596,7 @@ export class TransactionsComponent {
   protected readonly activeCount = computed(() => {
     let n = 0;
     if (this.search().trim()) n++;
-    if (this.type()) n++;
+    if (this.type() || this.transfersOnly()) n++;
     if (this.source()) n++;
     if (this.accountId()) n++;
     if (this.categoryId()) n++;
@@ -601,7 +609,8 @@ export class TransactionsComponent {
   protected readonly activeChips = computed(() => {
     const chips: string[] = [];
     if (this.search().trim()) chips.push(`“${this.search().trim()}”`);
-    if (this.type()) chips.push(this.type() as string);
+    if (this.transfersOnly()) chips.push('Transfer');
+    else if (this.type()) chips.push(this.type() as string);
     if (this.source())
       chips.push(this.source() === 'Import' ? 'Imported' : 'Manual');
     const account = this.refData
@@ -650,6 +659,7 @@ export class TransactionsComponent {
   }
 
   protected setType(value: string): void {
+    this.transfersOnly.set(value === 'Transfer');
     this.type.set(value === 'Expense' || value === 'Income' ? value : null);
     this.reset();
   }
@@ -716,6 +726,7 @@ export class TransactionsComponent {
   protected clearFilters(): void {
     this.search.set('');
     this.type.set(null);
+    this.transfersOnly.set(false);
     this.source.set(null);
     this.accountId.set(null);
     this.categoryId.set(null);
@@ -762,6 +773,29 @@ export class TransactionsComponent {
         this.refData.load().subscribe();
       },
       error: () => this.deleting.set(false),
+    });
+  }
+
+  protected async deleteOne(tx: TransactionDto): Promise<void> {
+    const isTransfer = tx.type === 'TransferOut' || tx.type === 'TransferIn';
+    const ok = await this.confirm.confirm({
+      title: isTransfer ? 'Delete this transfer?' : 'Delete this transaction?',
+      message: isTransfer
+        ? 'Both sides of the transfer will be removed, so the balances of both accounts change.'
+        : `${tx.description || tx.categoryName} will be removed from your records and analytics.`,
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    this.api.delete(tx.id).subscribe({
+      next: () => {
+        this.toast.success(
+          isTransfer ? 'Transfer deleted.' : 'Transaction deleted.',
+        );
+        this.refresh.bump();
+        this.refData.load().subscribe();
+      },
     });
   }
 

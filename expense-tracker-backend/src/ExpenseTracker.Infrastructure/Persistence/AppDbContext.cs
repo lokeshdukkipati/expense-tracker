@@ -15,6 +15,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, TimePro
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<Budget> Budgets => Set<Budget>();
+    public DbSet<SavingsGoal> SavingsGoals => Set<SavingsGoal>();
+    public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

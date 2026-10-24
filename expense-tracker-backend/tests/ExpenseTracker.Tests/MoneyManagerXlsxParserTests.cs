@@ -60,7 +60,7 @@ public class MoneyManagerXlsxParserTests
 
         var result = await new MoneyManagerXlsxParser().ParseAsync(file, CancellationToken.None);
 
-        Assert.Equal(2, result.Rows.Count);
+        Assert.Equal(3, result.Rows.Count);
 
         var expense = result.Rows[0];
         Assert.Equal(TransactionType.Expense, expense.Type);
@@ -74,9 +74,11 @@ public class MoneyManagerXlsxParserTests
         Assert.Equal(TransactionType.Income, income.Type);
         Assert.Null(income.Subcategory);
 
-        var invalid = Assert.Single(result.Invalid);
-        Assert.Equal(4, invalid.RowNumber);
-        Assert.Contains("Transfers", invalid.Reason);
+        Assert.Empty(result.Invalid);
+
+        var transfer = result.Rows[2];
+        Assert.Equal(TransactionType.TransferOut, transfer.Type);
+        Assert.Equal(100m, transfer.Amount);
     }
 
     [Fact]

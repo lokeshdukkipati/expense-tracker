@@ -17,7 +17,7 @@ public sealed class CategoryService(
     {
         var userId = currentUser.UserId;
 
-        var query = db.Categories.AsNoTracking().Where(c => c.UserId == userId);
+        var query = db.Categories.AsNoTracking().Where(c => c.UserId == userId && !c.IsSystem);
         if (type is { } t)
         {
             query = query.Where(c => c.Type == t);
@@ -35,6 +35,11 @@ public sealed class CategoryService(
     public async Task<CategoryDto> CreateAsync(CreateCategoryRequest request, CancellationToken cancellationToken)
     {
         await createValidator.ValidateAndThrowAsync(request, cancellationToken);
+
+        if (request.Type is TransactionType.TransferOut or TransactionType.TransferIn)
+        {
+            throw new BusinessRuleException("Categories can only be created for expenses or income.", "category_type_invalid");
+        }
 
         var userId = currentUser.UserId;
         var name = request.Name.Trim();
@@ -81,6 +86,11 @@ public sealed class CategoryService(
         var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId, cancellationToken)
                        ?? throw new NotFoundException(nameof(Category), id);
 
+        if (category.IsSystem)
+        {
+            throw new BusinessRuleException("This category is managed by the app and cannot be changed.", "category_is_system");
+        }
+
         var name = request.Name.Trim();
         await EnsureNameAvailableAsync(userId, category.ParentId, category.Type, name, id, cancellationToken);
 
@@ -100,6 +110,11 @@ public sealed class CategoryService(
         var userId = currentUser.UserId;
         var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId, cancellationToken)
                        ?? throw new NotFoundException(nameof(Category), id);
+
+        if (category.IsSystem)
+        {
+            throw new BusinessRuleException("This category is managed by the app and cannot be deleted.", "category_is_system");
+        }
 
         if (await db.Categories.AnyAsync(c => c.ParentId == id && c.UserId == userId, cancellationToken))
         {

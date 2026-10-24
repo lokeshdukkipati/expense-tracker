@@ -6,102 +6,195 @@ export const routes: Routes = [
     path: 'login',
     canActivate: [guestGuard],
     title: 'Sign in · Expense Tracker',
-    loadComponent: () => import('./features/auth/login.component').then((m) => m.LoginComponent),
+    loadComponent: () =>
+      import('./features/auth/login.component').then((m) => m.LoginComponent),
   },
   {
     path: 'register',
     canActivate: [guestGuard],
     title: 'Create account · Expense Tracker',
-    loadComponent: () => import('./features/auth/register.component').then((m) => m.RegisterComponent),
+    loadComponent: () =>
+      import('./features/auth/register.component').then(
+        (m) => m.RegisterComponent,
+      ),
   },
   {
     path: '',
     canActivate: [authGuard],
-    loadComponent: () => import('./layout/shell.component').then((m) => m.ShellComponent),
+    loadComponent: () =>
+      import('./layout/shell.component').then((m) => m.ShellComponent),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       {
         path: 'dashboard',
         title: 'Dashboard · Expense Tracker',
-        loadComponent: () => import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
+        loadComponent: () =>
+          import('./features/dashboard/dashboard.component').then(
+            (m) => m.DashboardComponent,
+          ),
       },
       {
         path: 'transactions',
         title: 'Transactions · Expense Tracker',
-        loadComponent: () => import('./features/transactions/transactions.component').then((m) => m.TransactionsComponent),
+        loadComponent: () =>
+          import('./features/transactions/transactions.component').then(
+            (m) => m.TransactionsComponent,
+          ),
       },
       {
         path: 'analytics',
-        loadComponent: () => import('./features/analytics/analytics-shell.component').then((m) => m.AnalyticsShellComponent),
+        loadComponent: () =>
+          import('./features/analytics/analytics-shell.component').then(
+            (m) => m.AnalyticsShellComponent,
+          ),
         children: [
           { path: '', pathMatch: 'full', redirectTo: 'overview' },
           {
             path: 'overview',
             title: 'Analytics · Overview',
-            loadComponent: () => import('./features/analytics/overview.component').then((m) => m.OverviewComponent),
+            loadComponent: () =>
+              import('./features/analytics/overview.component').then(
+                (m) => m.OverviewComponent,
+              ),
           },
           {
             path: 'categories',
             title: 'Analytics · Categories',
-            loadComponent: () => import('./features/analytics/categories-tab.component').then((m) => m.CategoriesTabComponent),
+            loadComponent: () =>
+              import('./features/analytics/categories-tab.component').then(
+                (m) => m.CategoriesTabComponent,
+              ),
           },
           {
             path: 'trends',
             title: 'Analytics · Trends',
-            loadComponent: () => import('./features/analytics/trends.component').then((m) => m.TrendsComponent),
+            loadComponent: () =>
+              import('./features/analytics/trends.component').then(
+                (m) => m.TrendsComponent,
+              ),
           },
           {
             path: 'patterns',
             title: 'Analytics · Patterns',
-            loadComponent: () => import('./features/analytics/patterns.component').then((m) => m.PatternsComponent),
+            loadComponent: () =>
+              import('./features/analytics/patterns.component').then(
+                (m) => m.PatternsComponent,
+              ),
           },
           {
             path: 'merchants',
             title: 'Analytics · Merchants',
-            loadComponent: () => import('./features/analytics/merchants.component').then((m) => m.MerchantsComponent),
+            loadComponent: () =>
+              import('./features/analytics/merchants.component').then(
+                (m) => m.MerchantsComponent,
+              ),
           },
           {
             path: 'recurring',
             title: 'Analytics · Recurring',
-            loadComponent: () => import('./features/analytics/recurring.component').then((m) => m.RecurringComponent),
+            loadComponent: () =>
+              import('./features/analytics/recurring.component').then(
+                (m) => m.RecurringComponent,
+              ),
           },
           {
             path: 'insights',
             title: 'Analytics · Insights Lab',
-            loadComponent: () => import('./features/analytics/insights-lab.component').then((m) => m.InsightsLabComponent),
+            loadComponent: () =>
+              import('./features/analytics/insights-lab.component').then(
+                (m) => m.InsightsLabComponent,
+              ),
           },
         ],
       },
       {
         path: 'budgets',
         title: 'Budgets · Expense Tracker',
-        loadComponent: () => import('./features/budgets/budgets.component').then((m) => m.BudgetsComponent),
+        loadComponent: () =>
+          import('./features/budgets/budgets.component').then(
+            (m) => m.BudgetsComponent,
+          ),
       },
       {
         path: 'accounts',
         title: 'Accounts · Expense Tracker',
-        loadComponent: () => import('./features/accounts/accounts.component').then((m) => m.AccountsComponent),
+        loadComponent: () =>
+          import('./features/accounts/accounts.component').then(
+            (m) => m.AccountsComponent,
+          ),
       },
       {
         path: 'categories',
         title: 'Categories · Expense Tracker',
-        loadComponent: () => import('./features/categories/categories.component').then((m) => m.CategoriesComponent),
+        loadComponent: () =>
+          import('./features/categories/categories.component').then(
+            (m) => m.CategoriesComponent,
+          ),
       },
       {
         path: 'import',
         title: 'Import · Expense Tracker',
-        loadComponent: () => import('./features/imports/imports.component').then((m) => m.ImportsComponent),
+        loadComponent: () =>
+          import('./features/imports/imports.component').then(
+            (m) => m.ImportsComponent,
+          ),
+      },
+      {
+        path: 'goals',
+        title: 'Goals · Expense Tracker',
+        loadComponent: () =>
+          import('./features/goals/goals.component').then(
+            (m) => m.GoalsComponent,
+          ),
+      },
+      {
+        path: 'net-worth',
+        title: 'Net worth · Expense Tracker',
+        loadComponent: () =>
+          import('./features/wealth/net-worth.component').then(
+            (m) => m.NetWorthComponent,
+          ),
+      },
+      {
+        path: 'achievements',
+        title: 'Streaks & badges · Expense Tracker',
+        loadComponent: () =>
+          import('./features/achievements/achievements.component').then(
+            (m) => m.AchievementsComponent,
+          ),
+      },
+      {
+        path: 'rules',
+        title: 'Auto-categorise · Expense Tracker',
+        loadComponent: () =>
+          import('./features/rules/rules.component').then(
+            (m) => m.RulesComponent,
+          ),
+      },
+      {
+        path: 'duplicates',
+        title: 'Double charges · Expense Tracker',
+        loadComponent: () =>
+          import('./features/duplicates/duplicates.component').then(
+            (m) => m.DuplicatesComponent,
+          ),
       },
       {
         path: 'settings',
         title: 'Settings · Expense Tracker',
-        loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
+        loadComponent: () =>
+          import('./features/settings/settings.component').then(
+            (m) => m.SettingsComponent,
+          ),
       },
     ],
   },
   {
     path: '**',
     title: 'Not found · Expense Tracker',
-    loadComponent: () => import('./features/settings/not-found.component').then((m) => m.NotFoundComponent),
+    loadComponent: () =>
+      import('./features/settings/not-found.component').then(
+        (m) => m.NotFoundComponent,
+      ),
   },
 ];

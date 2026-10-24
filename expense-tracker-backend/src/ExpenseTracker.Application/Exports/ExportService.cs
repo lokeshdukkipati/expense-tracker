@@ -63,7 +63,13 @@ public sealed class ExportService(
             r.Category,
             r.Subcategory,
             r.Note,
-            r.Type == TransactionType.Income ? "Income" : "Exp.",
+            r.Type switch
+            {
+                TransactionType.Income => "Income",
+                TransactionType.TransferIn => "Transfer-In",
+                TransactionType.TransferOut => "Transfer-Out",
+                _ => "Exp."
+            },
             r.Description,
             r.Amount,
             r.Currency,

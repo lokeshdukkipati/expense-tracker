@@ -5,6 +5,14 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import {
+  CdkDrag,
+  CdkDragDrop,
+  CdkDragHandle,
+  CdkDropList,
+  moveItemInArray,
+} from '@angular/cdk/drag-drop';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AnalyticsApi } from '../../core/api/analytics.api';
 import { BudgetsApi } from '../../core/api/budgets.api';
@@ -28,6 +36,15 @@ import {
   TrendPointDto,
 } from '../../core/models/api.models';
 import { AuthService } from '../../core/services/auth.service';
+import { PreferencesService } from '../../core/services/preferences.service';
+import { MoneyStoryComponent } from '../story/money-story.component';
+import {
+  DASHBOARD_BLOCKS,
+  blockInfo,
+  isBlockId,
+  mergeOrder,
+} from './dashboard-layout';
+import { WealthWidgetsComponent } from './wealth-widgets.component';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { RefreshService } from '../../core/services/refresh.service';
 import { TimelineService } from '../../core/services/timeline.service';
@@ -111,14 +128,57 @@ const SORTS: SelectOption[] = [
     EmptyStateComponent,
     ErrorStateComponent,
     SkeletonComponent,
+    NgTemplateOutlet,
+    CdkDropList,
+    CdkDrag,
+    CdkDragHandle,
+    MoneyStoryComponent,
+    WealthWidgetsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="dash">
         <header class="head">
-          <h1>{{ greeting }}, {{ firstName() }}</h1>
-          <p>Here is how your money is moving.</p>
+          <div>
+            <h1>{{ greeting }}, {{ firstName() }}</h1>
+            <p>Here is how your money is moving.</p>
+          </div>
+          @if (hasData()) {
+            <div class="head-actions">
+              @if (editing()) {
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  (click)="resetLayout()"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  (click)="cancelEdit()"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  (click)="saveEdit()"
+                >
+                  <app-icon name="check" [size]="16" /> Done
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="startEdit()"
+                >
+                  <app-icon name="layout" [size]="16" /> Customise
+                </button>
+              }
+            </div>
+          }
         </header>
 
         @if (hasData()) {
@@ -164,630 +224,751 @@ const SORTS: SelectOption[] = [
           </section>
         } @else {
           <!-- ===== KPIs ===== -->
-          <div class="kpis reveal">
-            <article class="card kpi hover">
-              <div class="top">
-                <span class="icon-tile" style="--tile: var(--success)"
-                  ><app-icon name="arrow-down-right" [size]="18" /></span
-                ><span class="lbl">Income</span>
-              </div>
-              <div class="val">
-                @if (summary.data(); as s) {
-                  <strong class="big"><app-money [value]="s.income" /></strong>
-                  <span
-                    class="delta"
-                    [class]="deltaClass(s.incomeChangePercent, true)"
-                    >{{ deltaText(s.incomeChangePercent) }}</span
-                  >
-                } @else {
-                  <app-skeleton height="30px" width="72%" />
-                }
-              </div>
-              <div class="spark">
-                <app-sparkline
-                  [values]="incomeSeries()"
-                  color="var(--success)"
-                />
-              </div>
-            </article>
+          <ng-template #bKpis>
+            <div class="kpis reveal">
+              <article class="card kpi hover">
+                <div class="top">
+                  <span class="icon-tile" style="--tile: var(--success)"
+                    ><app-icon name="arrow-down-right" [size]="18" /></span
+                  ><span class="lbl">Income</span>
+                </div>
+                <div class="val">
+                  @if (summary.data(); as s) {
+                    <strong class="big"
+                      ><app-money [value]="s.income"
+                    /></strong>
+                    <span
+                      class="delta"
+                      [class]="deltaClass(s.incomeChangePercent, true)"
+                      >{{ deltaText(s.incomeChangePercent) }}</span
+                    >
+                  } @else {
+                    <app-skeleton height="30px" width="72%" />
+                  }
+                </div>
+                <div class="spark">
+                  <app-sparkline
+                    [values]="incomeSeries()"
+                    color="var(--success)"
+                  />
+                </div>
+              </article>
 
-            <article class="card kpi hover">
-              <div class="top">
-                <span class="icon-tile" style="--tile: var(--danger)"
-                  ><app-icon name="arrow-up-right" [size]="18" /></span
-                ><span class="lbl">Expenses</span>
-              </div>
-              <div class="val">
-                @if (summary.data(); as s) {
-                  <strong class="big"><app-money [value]="s.expense" /></strong>
-                  <span
-                    class="delta"
-                    [class]="deltaClass(s.expenseChangePercent, false)"
-                    >{{ deltaText(s.expenseChangePercent) }}</span
-                  >
-                } @else {
-                  <app-skeleton height="30px" width="72%" />
-                }
-              </div>
-              <div class="spark">
-                <app-sparkline
-                  [values]="expenseSeries()"
-                  color="var(--danger)"
-                />
-              </div>
-            </article>
+              <article class="card kpi hover">
+                <div class="top">
+                  <span class="icon-tile" style="--tile: var(--danger)"
+                    ><app-icon name="arrow-up-right" [size]="18" /></span
+                  ><span class="lbl">Expenses</span>
+                </div>
+                <div class="val">
+                  @if (summary.data(); as s) {
+                    <strong class="big"
+                      ><app-money [value]="s.expense"
+                    /></strong>
+                    <span
+                      class="delta"
+                      [class]="deltaClass(s.expenseChangePercent, false)"
+                      >{{ deltaText(s.expenseChangePercent) }}</span
+                    >
+                  } @else {
+                    <app-skeleton height="30px" width="72%" />
+                  }
+                </div>
+                <div class="spark">
+                  <app-sparkline
+                    [values]="expenseSeries()"
+                    color="var(--danger)"
+                  />
+                </div>
+              </article>
 
-            <article class="card kpi hover">
-              <div class="top">
-                <span class="icon-tile" style="--tile: var(--primary)"
-                  ><app-icon name="wallet" [size]="18" /></span
-                ><span class="lbl">Net savings</span>
-              </div>
-              <div class="val">
-                @if (summary.data(); as s) {
-                  <strong class="big" [class.text-danger]="s.net < 0"
-                    ><app-money [value]="s.net"
-                  /></strong>
-                } @else {
-                  <app-skeleton height="30px" width="72%" />
-                }
-              </div>
-              @if (summary.data(); as s) {
-                <small class="hint"
-                  >{{ s.transactionCount }} transaction{{
-                    s.transactionCount === 1 ? '' : 's'
-                  }}
-                  · avg
-                  {{ s.averageDailyExpense | money: 'compact' }}/day</small
-                >
-              }
-              <div class="spark">
-                <app-sparkline [values]="netSeries()" color="var(--primary)" />
-              </div>
-            </article>
-
-            <article class="card kpi hover">
-              <div class="top">
-                <span class="icon-tile" style="--tile: var(--accent)"
-                  ><app-icon name="percent" [size]="18" /></span
-                ><span class="lbl">Savings rate</span>
-              </div>
-              <div class="val">
-                @if (summary.data(); as s) {
-                  @if (s.savingsRatePercent !== null) {
-                    <strong
-                      class="big"
-                      [class.text-danger]="s.savingsRatePercent < 0"
-                      ><app-count-up
-                        [value]="s.savingsRatePercent"
-                        [format]="pct"
+              <article class="card kpi hover">
+                <div class="top">
+                  <span class="icon-tile" style="--tile: var(--primary)"
+                    ><app-icon name="wallet" [size]="18" /></span
+                  ><span class="lbl">Net savings</span>
+                </div>
+                <div class="val">
+                  @if (summary.data(); as s) {
+                    <strong class="big" [class.text-danger]="s.net < 0"
+                      ><app-money [value]="s.net"
                     /></strong>
                   } @else {
-                    <strong class="big faint">—</strong>
+                    <app-skeleton height="30px" width="72%" />
                   }
-                } @else {
-                  <app-skeleton height="30px" width="50%" />
+                </div>
+                @if (summary.data(); as s) {
+                  <small class="hint"
+                    >{{ s.transactionCount }} transaction{{
+                      s.transactionCount === 1 ? '' : 's'
+                    }}
+                    · avg
+                    {{ s.averageDailyExpense | money: 'compact' }}/day</small
+                  >
                 }
-              </div>
-              @if (summary.data(); as s) {
-                <small class="hint">{{
-                  s.savingsRatePercent === null
-                    ? 'No income recorded in this period'
-                    : rateHint(s.savingsRatePercent)
-                }}</small>
-              }
-              <div class="rate-bar">
-                <app-progress
-                  [value]="clampedRate()"
-                  tone="primary"
-                  [marker]="20"
-                />
-              </div>
-            </article>
-          </div>
+                <div class="spark">
+                  <app-sparkline
+                    [values]="netSeries()"
+                    color="var(--primary)"
+                  />
+                </div>
+              </article>
+
+              <article class="card kpi hover">
+                <div class="top">
+                  <span class="icon-tile" style="--tile: var(--accent)"
+                    ><app-icon name="percent" [size]="18" /></span
+                  ><span class="lbl">Savings rate</span>
+                </div>
+                <div class="val">
+                  @if (summary.data(); as s) {
+                    @if (s.savingsRatePercent !== null) {
+                      <strong
+                        class="big"
+                        [class.text-danger]="s.savingsRatePercent < 0"
+                        ><app-count-up
+                          [value]="s.savingsRatePercent"
+                          [format]="pct"
+                      /></strong>
+                    } @else {
+                      <strong class="big faint">—</strong>
+                    }
+                  } @else {
+                    <app-skeleton height="30px" width="50%" />
+                  }
+                </div>
+                @if (summary.data(); as s) {
+                  <small class="hint">{{
+                    s.savingsRatePercent === null
+                      ? 'No income recorded in this period'
+                      : rateHint(s.savingsRatePercent)
+                  }}</small>
+                }
+                <div class="rate-bar">
+                  <app-progress
+                    [value]="clampedRate()"
+                    tone="primary"
+                    [marker]="20"
+                  />
+                </div>
+              </article>
+            </div>
+          </ng-template>
 
           <!-- ===== Cash flow + categories ===== -->
-          <div class="row row-a reveal">
-            <section class="card card-pad">
-              <div class="card-head">
-                <div>
-                  <h3 class="card-title">
-                    <app-icon name="activity" [size]="18" /> Cash flow
-                  </h3>
-                  <p class="card-sub">Income and spending over time</p>
+          <ng-template #bCashflow>
+            <div class="row row-a reveal">
+              <section class="card card-pad">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">
+                      <app-icon name="activity" [size]="18" /> Cash flow
+                    </h3>
+                    <p class="card-sub">Income and spending over time</p>
+                  </div>
+                  <a routerLink="/analytics/trends" class="btn btn-ghost btn-sm"
+                    >Details <app-icon name="arrow-right" [size]="14"
+                  /></a>
                 </div>
-                <a routerLink="/analytics/trends" class="btn btn-ghost btn-sm"
-                  >Details <app-icon name="arrow-right" [size]="14"
-                /></a>
-              </div>
-              @if (trend.error(); as e) {
-                <app-error-state [error]="e" (retry)="reloadAll()" />
-              } @else {
-                @if (trend.data(); as points) {
-                  @if (hasFlow(points)) {
+                @if (trend.error(); as e) {
+                  <app-error-state [error]="e" (retry)="reloadAll()" />
+                } @else {
+                  @if (trend.data(); as points) {
+                    @if (hasFlow(points)) {
+                      <app-line-chart
+                        [labels]="trendLabels()"
+                        [series]="trendSeries()"
+                        [format]="compactMoney"
+                        [height]="260"
+                        ariaLabel="Income and expenses over time"
+                      />
+                      <div class="legend">
+                        <span
+                          ><i style="background: var(--success)"></i
+                          >Income</span
+                        ><span
+                          ><i style="background: var(--danger)"></i
+                          >Expenses</span
+                        >
+                      </div>
+                    } @else {
+                      <app-empty-state
+                        icon="activity"
+                        title="No activity in this period"
+                        message="Pick another range, or add a transaction to see your cash flow."
+                      />
+                    }
+                  } @else {
+                    <app-skeleton height="260px" radius="16px" />
+                  }
+                }
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">
+                      <app-icon name="chart" [size]="18" /> Where it goes
+                    </h3>
+                    <p class="card-sub">Spending by category</p>
+                  </div>
+                </div>
+                @if (categories.error(); as e) {
+                  <app-error-state [error]="e" (retry)="reloadAll()" />
+                } @else {
+                  @if (categories.data(); as c) {
+                    @if (c.items.length > 0) {
+                      <div class="donut">
+                        <app-donut-chart
+                          [items]="donutItems()"
+                          [size]="196"
+                          [thickness]="24"
+                          centerLabel="Spent"
+                          [centerFormat]="compactMoney"
+                          [(active)]="activeSlice"
+                          ariaLabel="Spending by category"
+                        />
+                      </div>
+                      <ul class="cats">
+                        @for (
+                          it of topCategories();
+                          track it.label;
+                          let i = $index
+                        ) {
+                          <li
+                            [class.on]="activeSlice() === i"
+                            (pointerenter)="activeSlice.set(i)"
+                            (pointerleave)="activeSlice.set(null)"
+                          >
+                            <i class="dot" [style.background]="it.color"></i
+                            ><span class="truncate">{{ it.label }}</span
+                            ><b class="num">{{
+                              it.value | money: 'compact'
+                            }}</b>
+                          </li>
+                        }
+                      </ul>
+                    } @else {
+                      <app-empty-state
+                        icon="chart"
+                        title="No spending yet"
+                        message="Expenses in this period will be broken down here."
+                      />
+                    }
+                  } @else {
+                    <app-skeleton height="260px" radius="16px" />
+                  }
+                }
+              </section>
+            </div>
+          </ng-template>
+
+          <!-- ===== Pace, health, safe to spend ===== -->
+          <ng-template #bPace>
+            <div class="row row-b reveal">
+              <section class="card card-pad pace">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">
+                      <app-icon name="zap" [size]="18" /> Spending pace
+                    </h3>
+                    <p class="card-sub">
+                      This month versus last month, cumulative
+                    </p>
+                  </div>
+                  @if (pace(); as p) {
+                    <span
+                      class="delta"
+                      [class]="
+                        p.deltaToDate > 0
+                          ? 'down'
+                          : p.deltaToDate < 0
+                            ? 'up'
+                            : 'flat'
+                      "
+                      >{{ signedWhole(p.deltaToDate) }}</span
+                    >
+                  }
+                </div>
+                @if (paceError(); as e) {
+                  <app-error-state [error]="e" (retry)="reloadAll()" />
+                } @else {
+                  @if (pace(); as p) {
                     <app-line-chart
-                      [labels]="trendLabels()"
-                      [series]="trendSeries()"
+                      [labels]="p.labels"
+                      [series]="paceSeries()"
                       [format]="compactMoney"
-                      [height]="260"
-                      ariaLabel="Income and expenses over time"
+                      [height]="220"
+                      ariaLabel="Cumulative spending this month versus last month"
                     />
                     <div class="legend">
                       <span
-                        ><i style="background: var(--success)"></i>Income</span
+                        ><i style="background: var(--primary)"></i>This
+                        month</span
                       ><span
-                        ><i style="background: var(--danger)"></i>Expenses</span
+                        ><i style="background: var(--faint)"></i>Last
+                        month</span
                       >
-                    </div>
-                  } @else {
-                    <app-empty-state
-                      icon="activity"
-                      title="No activity in this period"
-                      message="Pick another range, or add a transaction to see your cash flow."
-                    />
-                  }
-                } @else {
-                  <app-skeleton height="260px" radius="16px" />
-                }
-              }
-            </section>
-
-            <section class="card card-pad">
-              <div class="card-head">
-                <div>
-                  <h3 class="card-title">
-                    <app-icon name="chart" [size]="18" /> Where it goes
-                  </h3>
-                  <p class="card-sub">Spending by category</p>
-                </div>
-              </div>
-              @if (categories.error(); as e) {
-                <app-error-state [error]="e" (retry)="reloadAll()" />
-              } @else {
-                @if (categories.data(); as c) {
-                  @if (c.items.length > 0) {
-                    <div class="donut">
-                      <app-donut-chart
-                        [items]="donutItems()"
-                        [size]="196"
-                        [thickness]="24"
-                        centerLabel="Spent"
-                        [centerFormat]="compactMoney"
-                        [(active)]="activeSlice"
-                        ariaLabel="Spending by category"
-                      />
-                    </div>
-                    <ul class="cats">
-                      @for (
-                        it of topCategories();
-                        track it.label;
-                        let i = $index
-                      ) {
-                        <li
-                          [class.on]="activeSlice() === i"
-                          (pointerenter)="activeSlice.set(i)"
-                          (pointerleave)="activeSlice.set(null)"
+                      @if (forecast.data(); as f) {
+                        <span
+                          ><i style="background: var(--warning)"></i>Projected
+                          {{ f.projectedMonthEnd | money: 'compact' }}</span
                         >
-                          <i class="dot" [style.background]="it.color"></i
-                          ><span class="truncate">{{ it.label }}</span
-                          ><b class="num">{{ it.value | money: 'compact' }}</b>
-                        </li>
                       }
-                    </ul>
+                    </div>
+                    <p class="note">
+                      @if (p.deltaToDate > 0) {
+                        You're
+                        <b class="text-danger">{{ whole(p.deltaToDate) }}</b>
+                        ahead of last month's pace.
+                      } @else if (p.deltaToDate < 0) {
+                        You're
+                        <b class="text-success">{{ whole(p.deltaToDate) }}</b>
+                        behind last month's pace. Nice.
+                      } @else {
+                        Exactly on last month's pace.
+                      }
+                    </p>
                   } @else {
-                    <app-empty-state
-                      icon="chart"
-                      title="No spending yet"
-                      message="Expenses in this period will be broken down here."
-                    />
+                    <app-skeleton height="270px" radius="16px" />
                   }
-                } @else {
-                  <app-skeleton height="260px" radius="16px" />
                 }
-              }
-            </section>
-          </div>
+              </section>
 
-          <!-- ===== Pace, health, safe to spend ===== -->
-          <div class="row row-b reveal">
-            <section class="card card-pad pace">
-              <div class="card-head">
-                <div>
+              <section class="card card-pad">
+                <div class="card-head">
                   <h3 class="card-title">
-                    <app-icon name="zap" [size]="18" /> Spending pace
+                    <app-icon name="shield" [size]="18" /> Health score
                   </h3>
-                  <p class="card-sub">
-                    This month versus last month, cumulative
-                  </p>
                 </div>
-                @if (pace(); as p) {
-                  <span
-                    class="delta"
-                    [class]="
-                      p.deltaToDate > 0
-                        ? 'down'
-                        : p.deltaToDate < 0
-                          ? 'up'
-                          : 'flat'
-                    "
-                    >{{ signedWhole(p.deltaToDate) }}</span
-                  >
-                }
-              </div>
-              @if (paceError(); as e) {
-                <app-error-state [error]="e" (retry)="reloadAll()" />
-              } @else {
-                @if (pace(); as p) {
-                  <app-line-chart
-                    [labels]="p.labels"
-                    [series]="paceSeries()"
-                    [format]="compactMoney"
-                    [height]="220"
-                    ariaLabel="Cumulative spending this month versus last month"
+                @if (health(); as h) {
+                  <app-gauge
+                    [value]="h.score"
+                    label="out of 100"
+                    [sublabel]="h.grade"
+                    [size]="200"
                   />
-                  <div class="legend">
-                    <span
-                      ><i style="background: var(--primary)"></i>This
-                      month</span
-                    ><span
-                      ><i style="background: var(--faint)"></i>Last month</span
-                    >
-                    @if (forecast.data(); as f) {
-                      <span
-                        ><i style="background: var(--warning)"></i>Projected
-                        {{ f.projectedMonthEnd | money: 'compact' }}</span
-                      >
+                  <ul class="hl">
+                    @for (c of h.components; track c.key) {
+                      <li>
+                        <span>{{ c.label }}</span
+                        ><app-progress
+                          [value]="c.score"
+                          [tone]="
+                            c.score >= 70
+                              ? 'OnTrack'
+                              : c.score >= 40
+                                ? 'Warning'
+                                : 'Exceeded'
+                          "
+                        />
+                      </li>
                     }
-                  </div>
-                  <p class="note">
-                    @if (p.deltaToDate > 0) {
-                      You're
-                      <b class="text-danger">{{ whole(p.deltaToDate) }}</b>
-                      ahead of last month's pace.
-                    } @else if (p.deltaToDate < 0) {
-                      You're
-                      <b class="text-success">{{ whole(p.deltaToDate) }}</b>
-                      behind last month's pace. Nice.
-                    } @else {
-                      Exactly on last month's pace.
-                    }
-                  </p>
-                } @else {
-                  <app-skeleton height="270px" radius="16px" />
-                }
-              }
-            </section>
-
-            <section class="card card-pad">
-              <div class="card-head">
-                <h3 class="card-title">
-                  <app-icon name="shield" [size]="18" /> Health score
-                </h3>
-              </div>
-              @if (health(); as h) {
-                <app-gauge
-                  [value]="h.score"
-                  label="out of 100"
-                  [sublabel]="h.grade"
-                  [size]="200"
-                />
-                <ul class="hl">
-                  @for (c of h.components; track c.key) {
-                    <li>
-                      <span>{{ c.label }}</span
-                      ><app-progress
-                        [value]="c.score"
-                        [tone]="
-                          c.score >= 70
-                            ? 'OnTrack'
-                            : c.score >= 40
-                              ? 'Warning'
-                              : 'Exceeded'
-                        "
-                      />
-                    </li>
-                  }
-                </ul>
-                <a
-                  routerLink="/analytics/insights"
-                  class="btn btn-ghost btn-sm btn-block"
-                  >How it's calculated</a
-                >
-              } @else if (healthLoading()) {
-                <app-skeleton height="230px" radius="16px" />
-              } @else {
-                <app-empty-state
-                  icon="shield"
-                  title="Not enough data yet"
-                  message="Add income and a few weeks of spending to unlock your score."
-                />
-              }
-            </section>
-
-            <section class="card card-pad">
-              <div class="card-head">
-                <h3 class="card-title">
-                  <app-icon name="target" [size]="18" /> Safe to spend
-                </h3>
-              </div>
-              @if (safe(); as s) {
-                <div class="safe">
-                  <strong class="big"
-                    ><app-money [value]="s.perDay" [decimals]="0"
-                  /></strong>
-                  <span class="muted"
-                    >per day for the next {{ s.daysLeft }} day{{
-                      s.daysLeft === 1 ? '' : 's'
-                    }}</span
+                  </ul>
+                  <a
+                    routerLink="/analytics/insights"
+                    class="btn btn-ghost btn-sm btn-block"
+                    >How it's calculated</a
                   >
-                </div>
-                <p class="note">
-                  @if (s.basis === 'budget') {
-                    Based on your overall monthly budget —
-                    {{ whole(s.remaining) }} left.
-                  } @else {
-                    Based on your recent monthly average —
-                    {{ whole(s.remaining) }} left to match it.
-                  }
-                </p>
-              } @else if (forecast.loaded() || budgets.loaded()) {
-                <app-empty-state
-                  icon="target"
-                  title="Set a budget"
-                  message="Create an overall monthly budget to see your daily allowance."
-                >
-                  <a routerLink="/budgets" class="btn btn-secondary btn-sm"
-                    >Create budget</a
-                  >
-                </app-empty-state>
-              } @else {
-                <app-skeleton height="120px" radius="16px" />
-              }
-
-              @if (forecast.data(); as f) {
-                <hr class="divider" />
-                <div class="fc">
-                  <div>
-                    <small class="muted">Projected month-end</small
-                    ><b class="num">{{ whole(f.projectedMonthEnd) }}</b>
-                  </div>
-                  <div>
-                    <small class="muted">Daily run rate</small
-                    ><b class="num">{{ whole(f.dailyRunRate) }}</b>
-                  </div>
-                </div>
-              }
-            </section>
-          </div>
-
-          <!-- ===== Budgets, insights, bills ===== -->
-          <div class="row row-c reveal">
-            <section class="card card-pad">
-              <div class="card-head">
-                <h3 class="card-title">
-                  <app-icon name="target" [size]="18" /> Budgets
-                </h3>
-                <a routerLink="/budgets" class="btn btn-ghost btn-sm">Manage</a>
-              </div>
-              @if (budgets.error(); as e) {
-                <app-error-state [error]="e" (retry)="reloadAll()" />
-              } @else {
-                @if (budgets.data(); as list) {
-                  @if (list.length > 0) {
-                    <ul class="bl">
-                      @for (b of list.slice(0, 4); track b.budget.id) {
-                        <li>
-                          <div class="r">
-                            <span class="truncate">{{
-                              b.budget.categoryName ?? 'Overall'
-                            }}</span
-                            ><b class="num"
-                              >{{ b.spent | money: 'compact' }} /
-                              {{ b.budget.amount | money: 'compact' }}</b
-                            >
-                          </div>
-                          <app-progress
-                            [value]="b.percentUsed"
-                            [tone]="b.state"
-                            [marker]="b.budget.alertThresholdPercent"
-                          />
-                        </li>
-                      }
-                    </ul>
-                  } @else {
-                    <app-empty-state
-                      icon="target"
-                      title="No budgets yet"
-                      message="Set limits to get alerts before you overspend."
-                      ><a routerLink="/budgets" class="btn btn-secondary btn-sm"
-                        >Add a budget</a
-                      ></app-empty-state
-                    >
-                  }
-                } @else {
-                  <app-skeleton height="160px" radius="16px" />
-                }
-              }
-            </section>
-
-            <section class="card card-pad">
-              <div class="card-head">
-                <h3 class="card-title">
-                  <app-icon name="sparkles" [size]="18" /> Insights
-                </h3>
-                <a routerLink="/analytics/insights" class="btn btn-ghost btn-sm"
-                  >Insights Lab</a
-                >
-              </div>
-              @if (insights().length > 0) {
-                <ul class="ins">
-                  @for (
-                    i of insights().slice(0, 4);
-                    track i.title;
-                    let n = $index
-                  ) {
-                    <li [class]="i.tone" [style.--i]="n">
-                      <span class="ic"
-                        ><app-icon [name]="i.icon" [size]="16"
-                      /></span>
-                      <div>
-                        <b>{{ i.title }}</b
-                        ><small>{{ i.text }}</small>
-                      </div>
-                    </li>
-                  }
-                </ul>
-              } @else if (summary.loaded()) {
-                <app-empty-state
-                  icon="sparkles"
-                  title="Nothing to flag"
-                  message="Insights appear as your history grows."
-                />
-              } @else {
-                <app-skeleton height="160px" radius="16px" />
-              }
-            </section>
-
-            <section class="card card-pad bills">
-              <div class="card-head">
-                <h3 class="card-title">
-                  <app-icon name="repeat" [size]="18" /> Upcoming bills
-                </h3>
-                <a
-                  routerLink="/analytics/recurring"
-                  class="btn btn-ghost btn-sm"
-                  >All</a
-                >
-              </div>
-              @if (recurring.error(); as e) {
-                <app-error-state [error]="e" (retry)="reloadAll()" />
-              } @else {
-                @if (recurring.data(); as list) {
-                  @if (upcoming().length > 0) {
-                    <ul class="up">
-                      @for (r of upcoming(); track r.description) {
-                        <li>
-                          <span class="when"
-                            ><b>{{ day(r.nextExpectedDate) }}</b
-                            ><small>{{
-                              month(r.nextExpectedDate)
-                            }}</small></span
-                          ><span class="truncate"
-                            >{{ r.description
-                            }}<small>{{ r.frequency }}</small></span
-                          ><b class="num">{{ r.typicalAmount | money }}</b>
-                        </li>
-                      }
-                    </ul>
-                  } @else {
-                    <app-empty-state
-                      icon="repeat"
-                      [title]="
-                        list.length
-                          ? 'Nothing due soon'
-                          : 'No recurring payments found'
-                      "
-                      message="Regular payments are detected automatically after a few months of history."
-                    />
-                  }
-                } @else {
-                  <app-skeleton height="160px" radius="16px" />
-                }
-              }
-            </section>
-          </div>
-
-          <!-- ===== Transactions ===== -->
-          <section
-            class="card card-pad recent"
-            [class.is-loading]="recent.loading() && !!recent.data()"
-          >
-            <div class="card-head">
-              <div>
-                <h3 class="card-title">
-                  <app-icon name="list" [size]="18" /> Transactions
-                </h3>
-                <p class="card-sub">Latest activity in the selected period</p>
-              </div>
-              <a routerLink="/transactions" class="btn btn-secondary btn-sm"
-                >View all</a
-              >
-            </div>
-
-            <div class="tools">
-              <app-search-box
-                [value]="search()"
-                (valueChange)="onSearch($event)"
-                placeholder="Search transactions"
-              />
-              <app-select
-                [options]="sorts"
-                [value]="sortKey()"
-                [block]="false"
-                (valueChange)="setSort($event)"
-                ariaLabel="Sort order"
-              />
-            </div>
-
-            @if (recent.error(); as e) {
-              <app-error-state [error]="e" (retry)="reloadAll()" />
-            } @else {
-              @if (recent.data(); as page) {
-                @if (page.items.length > 0) {
-                  <app-transaction-list
-                    [items]="page.items"
-                    [sortBy]="sortBy()"
-                    [sortDir]="sortDir()"
-                    (sortToggle)="toggleSort($event)"
-                    (rowClick)="txForm.openEdit($event)"
-                  />
-                  <app-paginator
-                    [total]="page.totalCount"
-                    [page]="pageNo()"
-                    [pageSize]="pageSize()"
-                    (pageChange)="pageNo.set($event)"
-                    (pageSizeChange)="setPageSize($event)"
-                  />
+                } @else if (healthLoading()) {
+                  <app-skeleton height="230px" radius="16px" />
                 } @else {
                   <app-empty-state
-                    icon="inbox"
-                    [title]="
-                      search() ? 'No matches' : 'No transactions in this period'
-                    "
-                    [message]="
-                      search()
-                        ? 'Try a different search term.'
-                        : 'Choose another timeline range or add a transaction.'
-                    "
-                  >
-                    @if (search()) {
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        (click)="onSearch('')"
-                      >
-                        Clear search
-                      </button>
-                    } @else {
-                      <button
-                        type="button"
-                        class="btn btn-primary btn-sm"
-                        (click)="txForm.openNew()"
-                      >
-                        <app-icon name="plus" [size]="16" /> Add transaction
-                      </button>
-                    }
-                  </app-empty-state>
+                    icon="shield"
+                    title="Not enough data yet"
+                    message="Add income and a few weeks of spending to unlock your score."
+                  />
                 }
-              } @else {
-                <div class="stack">
-                  <app-skeleton height="52px" /><app-skeleton
-                    height="52px"
-                  /><app-skeleton height="52px" /><app-skeleton height="52px" />
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h3 class="card-title">
+                    <app-icon name="target" [size]="18" /> Safe to spend
+                  </h3>
                 </div>
+                @if (safe(); as s) {
+                  <div class="safe">
+                    <strong class="big"
+                      ><app-money [value]="s.perDay" [decimals]="0"
+                    /></strong>
+                    <span class="muted"
+                      >per day for the next {{ s.daysLeft }} day{{
+                        s.daysLeft === 1 ? '' : 's'
+                      }}</span
+                    >
+                  </div>
+                  <p class="note">
+                    @if (s.basis === 'budget') {
+                      Based on your overall monthly budget —
+                      {{ whole(s.remaining) }} left.
+                    } @else {
+                      Based on your recent monthly average —
+                      {{ whole(s.remaining) }} left to match it.
+                    }
+                  </p>
+                } @else if (forecast.loaded() || budgets.loaded()) {
+                  <app-empty-state
+                    icon="target"
+                    title="Set a budget"
+                    message="Create an overall monthly budget to see your daily allowance."
+                  >
+                    <a routerLink="/budgets" class="btn btn-secondary btn-sm"
+                      >Create budget</a
+                    >
+                  </app-empty-state>
+                } @else {
+                  <app-skeleton height="120px" radius="16px" />
+                }
+
+                @if (forecast.data(); as f) {
+                  <hr class="divider" />
+                  <div class="fc">
+                    <div>
+                      <small class="muted">Projected month-end</small
+                      ><b class="num">{{ whole(f.projectedMonthEnd) }}</b>
+                    </div>
+                    <div>
+                      <small class="muted">Daily run rate</small
+                      ><b class="num">{{ whole(f.dailyRunRate) }}</b>
+                    </div>
+                  </div>
+                }
+              </section>
+            </div>
+          </ng-template>
+
+          <!-- ===== Budgets, insights, bills ===== -->
+          <ng-template #bBudgets>
+            <div class="row row-c reveal">
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h3 class="card-title">
+                    <app-icon name="target" [size]="18" /> Budgets
+                  </h3>
+                  <a routerLink="/budgets" class="btn btn-ghost btn-sm"
+                    >Manage</a
+                  >
+                </div>
+                @if (budgets.error(); as e) {
+                  <app-error-state [error]="e" (retry)="reloadAll()" />
+                } @else {
+                  @if (budgets.data(); as list) {
+                    @if (list.length > 0) {
+                      <ul class="bl">
+                        @for (b of list.slice(0, 4); track b.budget.id) {
+                          <li>
+                            <div class="r">
+                              <span class="truncate">{{
+                                b.budget.categoryName ?? 'Overall'
+                              }}</span
+                              ><b class="num"
+                                >{{ b.spent | money: 'compact' }} /
+                                {{ b.budget.amount | money: 'compact' }}</b
+                              >
+                            </div>
+                            <app-progress
+                              [value]="b.percentUsed"
+                              [tone]="b.state"
+                              [marker]="b.budget.alertThresholdPercent"
+                            />
+                          </li>
+                        }
+                      </ul>
+                    } @else {
+                      <app-empty-state
+                        icon="target"
+                        title="No budgets yet"
+                        message="Set limits to get alerts before you overspend."
+                        ><a
+                          routerLink="/budgets"
+                          class="btn btn-secondary btn-sm"
+                          >Add a budget</a
+                        ></app-empty-state
+                      >
+                    }
+                  } @else {
+                    <app-skeleton height="160px" radius="16px" />
+                  }
+                }
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h3 class="card-title">
+                    <app-icon name="sparkles" [size]="18" /> Insights
+                  </h3>
+                  <a
+                    routerLink="/analytics/insights"
+                    class="btn btn-ghost btn-sm"
+                    >Insights Lab</a
+                  >
+                </div>
+                @if (insights().length > 0) {
+                  <ul class="ins">
+                    @for (
+                      i of insights().slice(0, 4);
+                      track i.title;
+                      let n = $index
+                    ) {
+                      <li [class]="i.tone" [style.--i]="n">
+                        <span class="ic"
+                          ><app-icon [name]="i.icon" [size]="16"
+                        /></span>
+                        <div>
+                          <b>{{ i.title }}</b
+                          ><small>{{ i.text }}</small>
+                        </div>
+                      </li>
+                    }
+                  </ul>
+                } @else if (summary.loaded()) {
+                  <app-empty-state
+                    icon="sparkles"
+                    title="Nothing to flag"
+                    message="Insights appear as your history grows."
+                  />
+                } @else {
+                  <app-skeleton height="160px" radius="16px" />
+                }
+              </section>
+
+              <section class="card card-pad bills">
+                <div class="card-head">
+                  <h3 class="card-title">
+                    <app-icon name="repeat" [size]="18" /> Upcoming bills
+                  </h3>
+                  <a
+                    routerLink="/analytics/recurring"
+                    class="btn btn-ghost btn-sm"
+                    >All</a
+                  >
+                </div>
+                @if (recurring.error(); as e) {
+                  <app-error-state [error]="e" (retry)="reloadAll()" />
+                } @else {
+                  @if (recurring.data(); as list) {
+                    @if (upcoming().length > 0) {
+                      <ul class="up">
+                        @for (r of upcoming(); track r.description) {
+                          <li>
+                            <span class="when"
+                              ><b>{{ day(r.nextExpectedDate) }}</b
+                              ><small>{{
+                                month(r.nextExpectedDate)
+                              }}</small></span
+                            ><span class="truncate"
+                              >{{ r.description
+                              }}<small>{{ r.frequency }}</small></span
+                            ><b class="num">{{ r.typicalAmount | money }}</b>
+                          </li>
+                        }
+                      </ul>
+                    } @else {
+                      <app-empty-state
+                        icon="repeat"
+                        [title]="
+                          list.length
+                            ? 'Nothing due soon'
+                            : 'No recurring payments found'
+                        "
+                        message="Regular payments are detected automatically after a few months of history."
+                      />
+                    }
+                  } @else {
+                    <app-skeleton height="160px" radius="16px" />
+                  }
+                }
+              </section>
+            </div>
+          </ng-template>
+
+          <!-- ===== Transactions ===== -->
+          <ng-template #bRecent>
+            <section
+              class="card card-pad recent"
+              [class.is-loading]="recent.loading() && !!recent.data()"
+            >
+              <div class="card-head">
+                <div>
+                  <h3 class="card-title">
+                    <app-icon name="list" [size]="18" /> Transactions
+                  </h3>
+                  <p class="card-sub">Latest activity in the selected period</p>
+                </div>
+                <a routerLink="/transactions" class="btn btn-secondary btn-sm"
+                  >View all</a
+                >
+              </div>
+
+              <div class="tools">
+                <app-search-box
+                  [value]="search()"
+                  (valueChange)="onSearch($event)"
+                  placeholder="Search transactions"
+                />
+                <app-select
+                  [options]="sorts"
+                  [value]="sortKey()"
+                  [block]="false"
+                  (valueChange)="setSort($event)"
+                  ariaLabel="Sort order"
+                />
+              </div>
+
+              @if (recent.error(); as e) {
+                <app-error-state [error]="e" (retry)="reloadAll()" />
+              } @else {
+                @if (recent.data(); as page) {
+                  @if (page.items.length > 0) {
+                    <app-transaction-list
+                      [items]="page.items"
+                      [sortBy]="sortBy()"
+                      [sortDir]="sortDir()"
+                      (sortToggle)="toggleSort($event)"
+                      (rowClick)="txForm.openEdit($event)"
+                    />
+                    <app-paginator
+                      [total]="page.totalCount"
+                      [page]="pageNo()"
+                      [pageSize]="pageSize()"
+                      (pageChange)="pageNo.set($event)"
+                      (pageSizeChange)="setPageSize($event)"
+                    />
+                  } @else {
+                    <app-empty-state
+                      icon="inbox"
+                      [title]="
+                        search()
+                          ? 'No matches'
+                          : 'No transactions in this period'
+                      "
+                      [message]="
+                        search()
+                          ? 'Try a different search term.'
+                          : 'Choose another timeline range or add a transaction.'
+                      "
+                    >
+                      @if (search()) {
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          (click)="onSearch('')"
+                        >
+                          Clear search
+                        </button>
+                      } @else {
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-sm"
+                          (click)="txForm.openNew()"
+                        >
+                          <app-icon name="plus" [size]="16" /> Add transaction
+                        </button>
+                      }
+                    </app-empty-state>
+                  }
+                } @else {
+                  <div class="stack">
+                    <app-skeleton height="52px" /><app-skeleton
+                      height="52px"
+                    /><app-skeleton height="52px" /><app-skeleton
+                      height="52px"
+                    />
+                  </div>
+                }
               }
+            </section>
+          </ng-template>
+
+          <!-- ===== The blocks above, in your order ===== -->
+          <div
+            class="blocks"
+            cdkDropList
+            [cdkDropListDisabled]="!editing()"
+            (cdkDropListDropped)="drop($event)"
+          >
+            @for (b of renderBlocks(); track b.id) {
+              <div
+                class="block"
+                cdkDrag
+                cdkDragLockAxis="y"
+                [cdkDragDisabled]="!editing()"
+                [class.edit]="editing()"
+                [class.off]="editing() && b.hidden"
+              >
+                @if (editing()) {
+                  <div class="block-bar">
+                    <span
+                      class="grip"
+                      cdkDragHandle
+                      role="img"
+                      aria-label="Drag to reorder"
+                      ><app-icon name="grip" [size]="20"
+                    /></span>
+                    <app-icon [name]="b.icon" [size]="18" />
+                    <strong class="grow">{{ b.label }}</strong>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon btn-sm"
+                      (click)="move(b.id, -1)"
+                      [disabled]="$first"
+                      aria-label="Move up"
+                    >
+                      <span class="flip"
+                        ><app-icon name="chevron-down" [size]="16"
+                      /></span>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon btn-sm"
+                      (click)="move(b.id, 1)"
+                      [disabled]="$last"
+                      aria-label="Move down"
+                    >
+                      <app-icon name="chevron-down" [size]="16" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      (click)="toggleBlock(b.id)"
+                    >
+                      <app-icon
+                        [name]="b.hidden ? 'eye' : 'eye-off'"
+                        [size]="16"
+                      />
+                      {{ b.hidden ? 'Show' : 'Hide' }}
+                    </button>
+                  </div>
+                }
+                <div class="block-body">
+                  @switch (b.id) {
+                    @case ('story') {
+                      <app-money-story />
+                    }
+                    @case ('kpis') {
+                      <ng-container [ngTemplateOutlet]="bKpis" />
+                    }
+                    @case ('cashflow') {
+                      <ng-container [ngTemplateOutlet]="bCashflow" />
+                    }
+                    @case ('pace') {
+                      <ng-container [ngTemplateOutlet]="bPace" />
+                    }
+                    @case ('budgets') {
+                      <ng-container [ngTemplateOutlet]="bBudgets" />
+                    }
+                    @case ('wealth') {
+                      <app-wealth-widgets />
+                    }
+                    @case ('recent') {
+                      <ng-container [ngTemplateOutlet]="bRecent" />
+                    }
+                  }
+                </div>
+              </div>
             }
-          </section>
+          </div>
         }
       </div>
     </div>
@@ -817,6 +998,98 @@ const SORTS: SelectOption[] = [
       }
       .dash > * {
         min-width: 0;
+      }
+
+      .head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* Customisable blocks: in edit mode each block shrinks to a bar you can drag, move or hide. */
+      .blocks {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+        min-width: 0;
+      }
+      .blocks > * {
+        min-width: 0;
+      }
+      .block {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+      .block.edit {
+        padding: 10px;
+        border: 1px dashed var(--border-strong);
+        border-radius: 22px;
+        background: var(--surface);
+      }
+      .block.edit.off {
+        opacity: 0.55;
+      }
+      .block.edit.off .block-body {
+        display: none;
+      }
+      .block.edit .block-body {
+        max-height: 90px;
+        overflow: hidden;
+        opacity: 0.6;
+        pointer-events: none;
+        -webkit-mask-image: linear-gradient(#000 35%, transparent);
+        mask-image: linear-gradient(#000 35%, transparent);
+      }
+      .block-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+      }
+      .block-bar .grow {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .grip {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        color: var(--muted);
+        cursor: grab;
+        touch-action: none;
+      }
+      .grip:active {
+        cursor: grabbing;
+      }
+      .flip {
+        display: inline-grid;
+        transform: rotate(180deg);
+      }
+      .block.cdk-drag-preview {
+        border-radius: 22px;
+        background: var(--panel-solid);
+        box-shadow: var(--shadow-lg);
+      }
+      .block.cdk-drag-placeholder {
+        opacity: 0.25;
+      }
+      .block.cdk-drag-animating,
+      .blocks.cdk-drop-list-dragging .block:not(.cdk-drag-placeholder) {
+        transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
       }
 
       .head h1 {
@@ -1281,6 +1554,31 @@ export class DashboardComponent {
   private readonly refresh = inject(RefreshService);
   private readonly refData = inject(ReferenceDataService);
   protected readonly txForm = inject(TxFormService);
+  private readonly prefs = inject(PreferencesService);
+
+  // ---- layout: the order and visibility of the dashboard blocks, saved on the account
+  protected readonly editing = signal(false);
+  private readonly draft = signal<{ order: string[]; hidden: string[] } | null>(
+    null,
+  );
+  private readonly savedLayout = computed(() => {
+    const layout = this.prefs.dashboardLayout();
+    return {
+      order: mergeOrder(layout?.order),
+      hidden: (layout?.hidden ?? []).filter(isBlockId),
+    };
+  });
+
+  /** While editing every block is listed (hidden ones dimmed); otherwise hidden blocks are left out. */
+  protected readonly renderBlocks = computed(() => {
+    const layout = this.editing()
+      ? (this.draft() ?? this.savedLayout())
+      : this.savedLayout();
+    const hidden = new Set(layout.hidden);
+    return layout.order
+      .filter((id) => this.editing() || !hidden.has(id))
+      .map((id) => ({ ...blockInfo(id), hidden: hidden.has(id) }));
+  });
 
   protected readonly greeting = greeting();
   protected readonly firstName = computed(
@@ -1333,6 +1631,59 @@ export class DashboardComponent {
     formatMoney(Math.abs(n), this.auth.currency(), { decimals: 0 });
   protected readonly signedWhole = (n: number): string =>
     formatMoney(n, this.auth.currency(), { decimals: 0, signed: true });
+
+  protected startEdit(): void {
+    const saved = this.savedLayout();
+    this.draft.set({ order: [...saved.order], hidden: [...saved.hidden] });
+    this.editing.set(true);
+  }
+
+  protected cancelEdit(): void {
+    this.editing.set(false);
+    this.draft.set(null);
+  }
+
+  protected saveEdit(): void {
+    const draft = this.draft();
+    if (draft)
+      this.prefs.saveDashboardLayout({
+        order: draft.order,
+        hidden: draft.hidden,
+      });
+    this.cancelEdit();
+  }
+
+  protected resetLayout(): void {
+    this.draft.set({ order: DASHBOARD_BLOCKS.map((b) => b.id), hidden: [] });
+  }
+
+  protected drop(event: CdkDragDrop<unknown>): void {
+    const draft = this.draft();
+    if (!draft) return;
+    const order = [...draft.order];
+    moveItemInArray(order, event.previousIndex, event.currentIndex);
+    this.draft.set({ ...draft, order });
+  }
+
+  protected move(id: string, by: -1 | 1): void {
+    const draft = this.draft();
+    if (!draft) return;
+    const from = draft.order.indexOf(id);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= draft.order.length) return;
+    const order = [...draft.order];
+    moveItemInArray(order, from, to);
+    this.draft.set({ ...draft, order });
+  }
+
+  protected toggleBlock(id: string): void {
+    const draft = this.draft();
+    if (!draft) return;
+    const hidden = draft.hidden.includes(id)
+      ? draft.hidden.filter((x) => x !== id)
+      : [...draft.hidden, id];
+    this.draft.set({ ...draft, hidden });
+  }
 
   constructor() {
     const v = () => this.refresh.version();
@@ -1445,13 +1796,11 @@ export class DashboardComponent {
 
   protected readonly donutItems = computed<DonutItem[]>(() => {
     const items = this.categories.data()?.items ?? [];
-    const top = items
-      .slice(0, 7)
-      .map((c, i) => ({
-        label: c.name,
-        value: c.amount,
-        color: c.color ?? colorAt(i),
-      }));
+    const top = items.slice(0, 7).map((c, i) => ({
+      label: c.name,
+      value: c.amount,
+      color: c.color ?? colorAt(i),
+    }));
     const rest = items.slice(7).reduce((s, c) => s + c.amount, 0);
     return rest > 0
       ? [...top, { label: 'Other', value: rest, color: '#64748b' }]

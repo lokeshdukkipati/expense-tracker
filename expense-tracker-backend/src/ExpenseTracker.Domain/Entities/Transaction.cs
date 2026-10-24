@@ -46,6 +46,12 @@ public class Transaction : BaseEntity
     /// </summary>
     public string? Fingerprint { get; set; }
 
+    /// <summary>
+    /// Shared by the two legs of a transfer between the user's own accounts (one <see cref="TransactionType.TransferOut"/>
+    /// and one <see cref="TransactionType.TransferIn"/>). Null for ordinary income and expenses.
+    /// </summary>
+    public Guid? TransferGroupId { get; set; }
+
     public bool IsDeleted { get; set; }
 
     public DateTimeOffset? DeletedAt { get; set; }

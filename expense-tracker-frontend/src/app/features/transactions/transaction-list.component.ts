@@ -1,10 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  model,
+  output,
+} from '@angular/core';
 import { TransactionDto } from '../../core/models/api.models';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { ViewportService } from '../../core/services/viewport.service';
 import { colorForLabel } from '../../core/utils/colors';
 import { formatDate, formatTime, relativeDay } from '../../core/utils/format';
 import { IconComponent } from '../../shared/ui/icon.component';
+import { SwipeRowDirective } from '../../shared/ui/swipe-row.directive';
 import { MoneyPipe } from '../../shared/ui/money.component';
 import { SortHeaderComponent } from '../../shared/ui/form-controls.component';
 import { SortState } from '../../core/utils/table-state';
@@ -18,70 +28,229 @@ interface DayGroup {
 /** Transactions as a table on tablets/desktops and as grouped cards on phones. */
 @Component({
   selector: 'app-transaction-list',
-  imports: [IconComponent, MoneyPipe, SortHeaderComponent],
+  imports: [
+    IconComponent,
+    MoneyPipe,
+    SortHeaderComponent,
+    NgTemplateOutlet,
+    SwipeRowDirective,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (viewport.isMobile()) {
       <div class="cards">
         @for (g of groups(); track g.label) {
-          <div class="day"><span>{{ g.label }}</span><span class="num" [class.text-success]="g.total > 0" [class.text-danger]="g.total < 0">{{ g.total | money: 'signed' }}</span></div>
+          <div class="day">
+            <span>{{ g.label }}</span
+            ><span
+              class="num"
+              [class.text-success]="g.total > 0"
+              [class.text-danger]="g.total < 0"
+              >{{ g.total | money: 'signed' }}</span
+            >
+          </div>
           @for (t of g.items; track t.id; let i = $index) {
-            <button type="button" class="card-row" [style.--i]="i" (click)="rowClick.emit(t)">
-              @if (selectable()) {
-                <input type="checkbox" class="checkbox" [checked]="isSelected(t.id)" (click)="$event.stopPropagation(); toggle(t.id)" [attr.aria-label]="'Select ' + (t.description || t.categoryName)" />
-              }
-              <span class="tile" [style.--tile]="colorOf(t)">{{ initial(t) }}</span>
-              <span class="mid">
-                <strong class="truncate">{{ t.description || t.categoryName }}</strong>
-                <small class="truncate">{{ categoryLabel(t) }} · {{ t.accountName }} · {{ time(t) }}</small>
-              </span>
-              <span class="amt num" [class.text-success]="t.type === 'Income'">{{ signed(t) | money }}</span>
-            </button>
+            @if (swipeActions()) {
+              <div
+                appSwipeRow
+                #row="appSwipeRow"
+                class="swipe-wrap"
+                [actionsWidth]="152"
+                [style.--i]="i"
+              >
+                <div class="swipe-actions">
+                  <button
+                    type="button"
+                    class="swipe-edit"
+                    (click)="row.close(); rowClick.emit(t)"
+                  >
+                    <app-icon name="edit" [size]="18" />Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="swipe-delete"
+                    (click)="row.close(); rowDelete.emit(t)"
+                  >
+                    <app-icon name="trash" [size]="18" />Delete
+                  </button>
+                </div>
+                <div class="swipe-content">
+                  <ng-container
+                    [ngTemplateOutlet]="cardRow"
+                    [ngTemplateOutletContext]="{ $implicit: t, i: i }"
+                  />
+                </div>
+              </div>
+            } @else {
+              <ng-container
+                [ngTemplateOutlet]="cardRow"
+                [ngTemplateOutletContext]="{ $implicit: t, i: i }"
+              />
+            }
           }
         }
       </div>
+
+      <ng-template #cardRow let-t let-i="i">
+        <button
+          type="button"
+          class="card-row"
+          [style.--i]="i"
+          (click)="rowClick.emit(t)"
+        >
+          @if (selectable()) {
+            <input
+              type="checkbox"
+              class="checkbox"
+              [checked]="isSelected(t.id)"
+              (click)="$event.stopPropagation(); toggle(t.id)"
+              [attr.aria-label]="'Select ' + title(t)"
+            />
+          }
+          @if (isTransfer(t)) {
+            <span class="tile" style="--tile: var(--primary)"
+              ><app-icon name="swap" [size]="20"
+            /></span>
+          } @else {
+            <span class="tile" [style.--tile]="colorOf(t)">{{
+              initial(t)
+            }}</span>
+          }
+          <span class="mid">
+            <strong class="truncate">{{ title(t) }}</strong>
+            <small class="truncate">{{ subline(t) }}</small>
+          </span>
+          <span
+            class="amt num"
+            [class.text-success]="t.type === 'Income'"
+            [class.muted]="isTransfer(t)"
+            >{{ signed(t) | money }}</span
+          >
+        </button>
+      </ng-template>
     } @else {
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
               @if (selectable()) {
-                <th style="width: 44px"><input type="checkbox" class="checkbox" [checked]="allSelected()" (change)="toggleAll()" aria-label="Select all on this page" /></th>
+                <th style="width: 44px">
+                  <input
+                    type="checkbox"
+                    class="checkbox"
+                    [checked]="allSelected()"
+                    (change)="toggleAll()"
+                    aria-label="Select all on this page"
+                  />
+                </th>
               }
               <th>
-                @if (sortable()) { <app-sort-header label="Date" key="date" [sort]="sortState()" (toggle)="sortToggle.emit($event)" /> } @else { Date }
+                @if (sortable()) {
+                  <app-sort-header
+                    label="Date"
+                    key="date"
+                    [sort]="sortState()"
+                    (toggle)="sortToggle.emit($event)"
+                  />
+                } @else {
+                  Date
+                }
               </th>
               <th>Description</th>
               <th>Category</th>
               <th class="hide-tablet">Account</th>
               <th class="right">
-                @if (sortable()) { <app-sort-header label="Amount" key="amount" align="right" [sort]="sortState()" (toggle)="sortToggle.emit($event)" /> } @else { Amount }
+                @if (sortable()) {
+                  <app-sort-header
+                    label="Amount"
+                    key="amount"
+                    align="right"
+                    [sort]="sortState()"
+                    (toggle)="sortToggle.emit($event)"
+                  />
+                } @else {
+                  Amount
+                }
               </th>
               <th style="width: 48px"></th>
             </tr>
           </thead>
           <tbody>
             @for (t of items(); track t.id; let i = $index) {
-              <tr class="clickable" [style.--i]="i" [class.sel]="isSelected(t.id)" (click)="rowClick.emit(t)">
+              <tr
+                class="clickable"
+                [style.--i]="i"
+                [class.sel]="isSelected(t.id)"
+                (click)="rowClick.emit(t)"
+              >
                 @if (selectable()) {
-                  <td (click)="$event.stopPropagation()"><input type="checkbox" class="checkbox" [checked]="isSelected(t.id)" (change)="toggle(t.id)" [attr.aria-label]="'Select ' + (t.description || t.categoryName)" /></td>
+                  <td (click)="$event.stopPropagation()">
+                    <input
+                      type="checkbox"
+                      class="checkbox"
+                      [checked]="isSelected(t.id)"
+                      (change)="toggle(t.id)"
+                      [attr.aria-label]="
+                        'Select ' + (t.description || t.categoryName)
+                      "
+                    />
+                  </td>
                 }
-                <td class="nowrap"><div class="cell-main"><strong>{{ date(t) }}</strong><small>{{ time(t) }}</small></div></td>
+                <td class="nowrap">
+                  <div class="cell-main">
+                    <strong>{{ date(t) }}</strong
+                    ><small>{{ time(t) }}</small>
+                  </div>
+                </td>
                 <td>
                   <div class="cell-main">
                     <strong>{{ t.description || '—' }}</strong>
                     @if (t.tags.length || t.note) {
                       <small class="tags">
-                        @for (tag of t.tags; track tag) { <span class="tag">#{{ tag }}</span> }
-                        @if (t.note) { <span class="truncate">{{ t.note }}</span> }
+                        @for (tag of t.tags; track tag) {
+                          <span class="tag">#{{ tag }}</span>
+                        }
+                        @if (t.note) {
+                          <span class="truncate">{{ t.note }}</span>
+                        }
                       </small>
                     }
                   </div>
                 </td>
-                <td><span class="cat"><i class="dot" [style.background]="colorOf(t)"></i>{{ categoryLabel(t) }}</span></td>
-                <td class="hide-tablet muted">{{ t.accountName }}</td>
-                <td class="right num amount" [class.text-success]="t.type === 'Income'">{{ signed(t) | money }}</td>
-                <td class="right"><span class="row-actions"><button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Edit" (click)="$event.stopPropagation(); rowClick.emit(t)"><app-icon name="edit" [size]="15" /></button></span></td>
+                <td>
+                  @if (isTransfer(t)) {
+                    <span class="cat"
+                      ><i class="dot" style="background: var(--primary)"></i
+                      >Transfer</span
+                    >
+                  } @else {
+                    <span class="cat"
+                      ><i class="dot" [style.background]="colorOf(t)"></i
+                      >{{ categoryLabel(t) }}</span
+                    >
+                  }
+                </td>
+                <td class="hide-tablet muted">
+                  {{ isTransfer(t) ? transferRoute(t) : t.accountName }}
+                </td>
+                <td
+                  class="right num amount"
+                  [class.text-success]="t.type === 'Income'"
+                  [class.muted]="isTransfer(t)"
+                >
+                  {{ signed(t) | money }}
+                </td>
+                <td class="right">
+                  <span class="row-actions"
+                    ><button
+                      type="button"
+                      class="btn btn-ghost btn-icon btn-sm"
+                      aria-label="Edit"
+                      (click)="$event.stopPropagation(); rowClick.emit(t)"
+                    >
+                      <app-icon name="edit" [size]="15" /></button
+                  ></span>
+                </td>
               </tr>
             }
           </tbody>
@@ -89,23 +258,111 @@ interface DayGroup {
       </div>
     }
   `,
-  styles: [`
-    .cards { display: flex; flex-direction: column; gap: 6px; }
-    .day { display: flex; justify-content: space-between; padding: 14px 4px 4px; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
-    .card-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; text-align: left; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
-      cursor: pointer; animation: fadeUp .35s both; animation-delay: calc(var(--i) * 30ms); transition: transform .15s, background .2s; }
-    .card-row:active { transform: scale(.985); background: var(--surface-2); }
-    .tile { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; flex: none; font-weight: 800; color: var(--tile); background: color-mix(in srgb, var(--tile) 18%, transparent); }
-    .mid { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-    .mid strong { font-weight: 600; font-size: .95rem; }
-    .mid small { color: var(--faint); font-size: .76rem; }
-    .amt { font-weight: 750; white-space: nowrap; }
-    .cat { display: inline-flex; align-items: center; gap: 8px; }
-    .amount { font-weight: 700; white-space: nowrap; }
-    .tags { display: flex; gap: 6px; align-items: center; }
-    .tag { color: var(--primary-2); font-weight: 600; }
-    tr.sel { background: color-mix(in srgb, var(--primary) 10%, transparent); }
-  `],
+  styles: [
+    `
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .day {
+        display: flex;
+        justify-content: space-between;
+        padding: 14px 4px 4px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+      }
+      .card-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 12px;
+        text-align: left;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+        animation: fadeUp 0.35s both;
+        animation-delay: calc(var(--i) * 30ms);
+        transition:
+          transform 0.15s,
+          background 0.2s;
+      }
+      .card-row:active {
+        transform: scale(0.985);
+        background: var(--surface-2);
+      }
+      .tile {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        flex: none;
+        font-weight: 800;
+        color: var(--tile);
+        background: color-mix(in srgb, var(--tile) 18%, transparent);
+      }
+      .mid {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+      }
+      .mid strong {
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      .mid small {
+        color: var(--faint);
+        font-size: 0.76rem;
+      }
+      .amt {
+        font-weight: 750;
+        white-space: nowrap;
+      }
+      .cat {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .amount {
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .tags {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .tag {
+        color: var(--primary-2);
+        font-weight: 600;
+      }
+      tr.sel {
+        background: color-mix(in srgb, var(--primary) 10%, transparent);
+      }
+      .swipe-wrap {
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        animation: fadeUp 0.35s both;
+        animation-delay: calc(var(--i) * 30ms);
+      }
+      .swipe-wrap .swipe-content {
+        border-radius: 15px;
+      }
+      .swipe-wrap .card-row {
+        border: 0;
+        border-radius: 0;
+        animation: none;
+      }
+    `,
+  ],
 })
 export class TransactionListComponent {
   protected readonly viewport = inject(ViewportService);
@@ -118,10 +375,21 @@ export class TransactionListComponent {
   readonly sortDir = input<'asc' | 'desc'>('desc');
   readonly rowClick = output<TransactionDto>();
   readonly sortToggle = output<string>();
+  /** On phones, rows can be swiped left to reveal Edit and Delete. The parent handles the delete. */
+  readonly swipeActions = input(false);
+  readonly rowDelete = output<TransactionDto>();
 
   protected readonly sortable = computed(() => this.sortBy() !== null);
-  protected readonly sortState = computed<SortState | null>(() => (this.sortBy() ? { key: this.sortBy() as string, dir: this.sortDir() } : null));
-  protected readonly allSelected = computed(() => this.items().length > 0 && this.items().every((t) => this.selected().has(t.id)));
+  protected readonly sortState = computed<SortState | null>(() =>
+    this.sortBy()
+      ? { key: this.sortBy() as string, dir: this.sortDir() }
+      : null,
+  );
+  protected readonly allSelected = computed(
+    () =>
+      this.items().length > 0 &&
+      this.items().every((t) => this.selected().has(t.id)),
+  );
 
   protected readonly groups = computed<DayGroup[]>(() => {
     const map = new Map<string, DayGroup>();
@@ -129,7 +397,8 @@ export class TransactionListComponent {
       const label = relativeDay(t.occurredAt);
       const group = map.get(label) ?? { label, total: 0, items: [] };
       group.items.push(t);
-      group.total += t.type === 'Income' ? t.amount : -t.amount;
+      if (t.type === 'Income') group.total += t.amount;
+      else if (t.type === 'Expense') group.total -= t.amount;
       map.set(label, group);
     }
     return [...map.values()];
@@ -154,17 +423,51 @@ export class TransactionListComponent {
   }
 
   protected signed(t: TransactionDto): number {
+    if (this.isTransfer(t)) return t.amount; // a transfer is neither money gained nor spent
     return t.type === 'Income' ? t.amount : -t.amount;
+  }
+
+  protected isTransfer(t: TransactionDto): boolean {
+    return t.type === 'TransferOut' || t.type === 'TransferIn';
+  }
+
+  /** "Bank → Cash", whichever side of the transfer this row is. */
+  protected transferRoute(t: TransactionDto): string {
+    const other = t.transferAccountName ?? 'another account';
+    return t.type === 'TransferOut'
+      ? `${t.accountName} → ${other}`
+      : `${other} → ${t.accountName}`;
+  }
+
+  protected title(t: TransactionDto): string {
+    return (
+      t.description ||
+      (this.isTransfer(t) ? this.transferRoute(t) : t.categoryName)
+    );
+  }
+
+  protected subline(t: TransactionDto): string {
+    return this.isTransfer(t)
+      ? `Transfer · ${this.time(t)}`
+      : `${this.categoryLabel(t)} · ${t.accountName} · ${this.time(t)}`;
   }
 
   protected colorOf(t: TransactionDto): string {
     const category = this.refData.categoryById().get(t.categoryId);
-    const parent = category?.parentId ? this.refData.categoryById().get(category.parentId) : undefined;
-    return category?.color ?? parent?.color ?? colorForLabel(t.parentCategoryName ?? t.categoryName);
+    const parent = category?.parentId
+      ? this.refData.categoryById().get(category.parentId)
+      : undefined;
+    return (
+      category?.color ??
+      parent?.color ??
+      colorForLabel(t.parentCategoryName ?? t.categoryName)
+    );
   }
 
   protected categoryLabel(t: TransactionDto): string {
-    return t.parentCategoryName ? `${t.parentCategoryName} › ${t.categoryName}` : t.categoryName;
+    return t.parentCategoryName
+      ? `${t.parentCategoryName} › ${t.categoryName}`
+      : t.categoryName;
   }
 
   protected initial(t: TransactionDto): string {

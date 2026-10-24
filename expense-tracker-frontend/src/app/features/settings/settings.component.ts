@@ -1,13 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
+import { SampleDataApi } from '../../core/api/sample-data.api';
 import { TransactionsApi } from '../../core/api/transactions.api';
 import { ApiError } from '../../core/errors/api-error';
-import { ExportFormat } from '../../core/models/api.models';
+import {
+  AccentName,
+  ExportFormat,
+  SampleDataStatusDto,
+} from '../../core/models/api.models';
 import { AuthService } from '../../core/services/auth.service';
 import { ConfirmService } from '../../core/services/confirm.service';
+import {
+  ACCENTS,
+  PreferencesService,
+} from '../../core/services/preferences.service';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
+import { RefreshService } from '../../core/services/refresh.service';
+import { ShortcutsService } from '../../core/services/shortcuts.service';
 import { ThemeMode, ThemeService } from '../../core/services/theme.service';
+import { TourService } from '../../core/services/tour.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CURRENCY_OPTIONS } from '../../core/utils/currencies';
 import { TIME_ZONE } from '../../core/utils/dates';
@@ -20,92 +32,487 @@ import { SpinnerComponent } from '../../shared/ui/ui-bits.component';
 
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule, IconComponent, SegmentedComponent, SelectComponent, OverlayComponent, SpinnerComponent],
+  imports: [
+    ReactiveFormsModule,
+    IconComponent,
+    SegmentedComponent,
+    SelectComponent,
+    OverlayComponent,
+    SpinnerComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
-      <div class="page-head"><div><h1>Settings</h1><p>Your profile, appearance, security and data.</p></div></div>
+      <div class="page-head">
+        <div>
+          <h1>Settings</h1>
+          <p>Your profile, appearance, security and data.</p>
+        </div>
+      </div>
 
       <div class="grid-12 reveal">
         <section class="card card-pad c-4 who">
           <span class="avatar big">{{ initials(user()?.fullName ?? '') }}</span>
           <h2>{{ user()?.fullName }}</h2>
           <p class="muted">{{ user()?.email }}</p>
-          <div class="meta"><span class="chip"><app-icon name="wallet" [size]="14" /> {{ user()?.defaultCurrency }}</span><span class="chip"><app-icon name="clock" [size]="14" /> {{ tz }}</span></div>
-          <button type="button" class="btn btn-secondary btn-block" (click)="signOut()"><app-icon name="log-out" [size]="18" /> Sign out</button>
+          <div class="meta">
+            <span class="chip"
+              ><app-icon name="wallet" [size]="14" />
+              {{ user()?.defaultCurrency }}</span
+            ><span class="chip"
+              ><app-icon name="clock" [size]="14" /> {{ tz }}</span
+            >
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary btn-block"
+            (click)="signOut()"
+          >
+            <app-icon name="log-out" [size]="18" /> Sign out
+          </button>
         </section>
 
         <div class="c-8 stack">
           <section class="card card-pad">
-            <h3 class="card-title"><app-icon name="user" [size]="18" /> Profile</h3>
-            <form [formGroup]="profile" (ngSubmit)="saveProfile()" novalidate class="stack top">
+            <h3 class="card-title">
+              <app-icon name="user" [size]="18" /> Profile
+            </h3>
+            <form
+              [formGroup]="profile"
+              (ngSubmit)="saveProfile()"
+              novalidate
+              class="stack top"
+            >
               <div class="form-grid">
-                <div class="field"><label for="pn">Full name</label><input id="pn" class="input" formControlName="fullName" maxlength="100" [class.invalid]="profile.controls.fullName.invalid && profile.controls.fullName.touched" />
-                  @if (profile.controls.fullName.invalid && profile.controls.fullName.touched) { <span class="field-error">Enter your name.</span> }</div>
-                <div class="field"><label>Default currency</label><app-select [options]="currencies" [value]="profile.controls.defaultCurrency.value" [searchable]="true" (valueChange)="setCurrency($event)" ariaLabel="Default currency" />
-                  <span class="field-hint">Used for new accounts and budgets.</span></div>
+                <div class="field">
+                  <label for="pn">Full name</label
+                  ><input
+                    id="pn"
+                    class="input"
+                    formControlName="fullName"
+                    maxlength="100"
+                    [class.invalid]="
+                      profile.controls.fullName.invalid &&
+                      profile.controls.fullName.touched
+                    "
+                  />
+                  @if (
+                    profile.controls.fullName.invalid &&
+                    profile.controls.fullName.touched
+                  ) {
+                    <span class="field-error">Enter your name.</span>
+                  }
+                </div>
+                <div class="field">
+                  <label>Default currency</label
+                  ><app-select
+                    [options]="currencies"
+                    [value]="profile.controls.defaultCurrency.value"
+                    [searchable]="true"
+                    (valueChange)="setCurrency($event)"
+                    ariaLabel="Default currency"
+                  />
+                  <span class="field-hint"
+                    >Used for new accounts and budgets.</span
+                  >
+                </div>
               </div>
-              <div class="row end"><button type="submit" class="btn btn-primary" [disabled]="savingProfile() || profile.pristine">@if (savingProfile()) { <app-spinner [size]="16" /> } Save profile</button></div>
+              <div class="row end">
+                <button
+                  type="submit"
+                  class="btn btn-primary"
+                  [disabled]="savingProfile() || profile.pristine"
+                >
+                  @if (savingProfile()) {
+                    <app-spinner [size]="16" />
+                  }
+                  Save profile
+                </button>
+              </div>
             </form>
           </section>
 
           <section class="card card-pad">
-            <h3 class="card-title"><app-icon name="sun" [size]="18" /> Appearance</h3>
-            <p class="card-sub">Choose how the app looks on this device.</p>
-            <app-segmented class="top" [options]="themes" [value]="theme.mode()" (valueChange)="setTheme($event)" />
+            <h3 class="card-title">
+              <app-icon name="sun" [size]="18" /> Appearance
+            </h3>
+            <p class="card-sub">
+              Saved on your account, so it follows you to every device.
+            </p>
+            <app-segmented
+              class="top"
+              [options]="themes"
+              [value]="theme.mode()"
+              (valueChange)="setTheme($event)"
+            />
+
+            <p class="label">Accent colour</p>
+            <div class="swatches" role="radiogroup" aria-label="Accent colour">
+              @for (a of accents; track a.id) {
+                <button
+                  type="button"
+                  class="swatch"
+                  role="radio"
+                  [attr.aria-checked]="theme.accent() === a.id"
+                  [attr.aria-label]="a.label"
+                  [title]="a.label"
+                  [class.on]="theme.accent() === a.id"
+                  [style.background]="a.swatch"
+                  (click)="setAccent(a.id)"
+                ></button>
+              }
+            </div>
+
+            <label class="toggle">
+              <input
+                type="checkbox"
+                class="checkbox"
+                [checked]="prefs.reduceMotion()"
+                (change)="prefs.setReduceMotion(!prefs.reduceMotion())"
+              />
+              <span
+                >Reduce motion<small class="muted"
+                  >Fewer animations and no confetti. Your device's own setting
+                  is always respected too.</small
+                ></span
+              >
+            </label>
           </section>
 
           <section class="card card-pad">
-            <h3 class="card-title"><app-icon name="lock" [size]="18" /> Password</h3>
+            <h3 class="card-title">
+              <app-icon name="sparkles" [size]="18" /> Help &amp; demo data
+            </h3>
+            <p class="card-sub">
+              Take the tour again, learn the shortcuts, or try the app with
+              sample data.
+            </p>
+            <div class="help-actions">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="tour.start()"
+              >
+                <app-icon name="play" [size]="16" /> Replay the tour
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="shortcuts.helpOpen.set(true)"
+              >
+                <app-icon name="keyboard" [size]="16" /> Keyboard shortcuts
+              </button>
+            </div>
+            <div class="demo">
+              @if (sample()?.isLoaded) {
+                <p class="muted">
+                  Demo data is loaded: {{ sample()?.accountCount }} demo
+                  accounts and {{ sample()?.transactionCount }} transactions.
+                  Anything you add to a demo account is removed with it.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-outline-danger"
+                  (click)="removeSample()"
+                  [disabled]="sampleBusy()"
+                >
+                  @if (sampleBusy()) {
+                    <app-spinner [size]="16" />
+                  }
+                  Remove demo data
+                </button>
+              } @else {
+                <p class="muted">
+                  Adds three demo accounts with about three months of activity,
+                  so you can explore the charts, goals and net worth before
+                  using your own data. One tap removes it again.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  (click)="loadSample()"
+                  [disabled]="sampleBusy()"
+                >
+                  @if (sampleBusy()) {
+                    <app-spinner [size]="16" />
+                  }
+                  Load demo data
+                </button>
+              }
+            </div>
+          </section>
+
+          <section class="card card-pad">
+            <h3 class="card-title">
+              <app-icon name="lock" [size]="18" /> Password
+            </h3>
             <p class="card-sub">Changing it signs you out on every device.</p>
-            <form [formGroup]="password" (ngSubmit)="savePassword()" novalidate class="stack top">
+            <form
+              [formGroup]="password"
+              (ngSubmit)="savePassword()"
+              novalidate
+              class="stack top"
+            >
               <div class="form-grid">
-                <div class="field"><label for="cp">Current password</label><input id="cp" class="input" type="password" formControlName="currentPassword" autocomplete="current-password" [class.invalid]="!!pwError('currentPassword')" />
-                  @if (pwError('currentPassword'); as e) { <span class="field-error">{{ e }}</span> }</div>
-                <div class="field"><label for="np">New password</label><input id="np" class="input" type="password" formControlName="newPassword" autocomplete="new-password" [class.invalid]="!!pwError('newPassword')" />
-                  @if (pwError('newPassword'); as e) { <span class="field-error">{{ e }}</span> } @else { <span class="field-hint">8+ characters with upper, lower case and a number.</span> }</div>
+                <div class="field">
+                  <label for="cp">Current password</label
+                  ><input
+                    id="cp"
+                    class="input"
+                    type="password"
+                    formControlName="currentPassword"
+                    autocomplete="current-password"
+                    [class.invalid]="!!pwError('currentPassword')"
+                  />
+                  @if (pwError('currentPassword'); as e) {
+                    <span class="field-error">{{ e }}</span>
+                  }
+                </div>
+                <div class="field">
+                  <label for="np">New password</label
+                  ><input
+                    id="np"
+                    class="input"
+                    type="password"
+                    formControlName="newPassword"
+                    autocomplete="new-password"
+                    [class.invalid]="!!pwError('newPassword')"
+                  />
+                  @if (pwError('newPassword'); as e) {
+                    <span class="field-error">{{ e }}</span>
+                  } @else {
+                    <span class="field-hint"
+                      >8+ characters with upper, lower case and a number.</span
+                    >
+                  }
+                </div>
               </div>
-              <div class="row end"><button type="submit" class="btn btn-secondary" [disabled]="savingPassword()">@if (savingPassword()) { <app-spinner [size]="16" /> } Update password</button></div>
+              <div class="row end">
+                <button
+                  type="submit"
+                  class="btn btn-secondary"
+                  [disabled]="savingPassword()"
+                >
+                  @if (savingPassword()) {
+                    <app-spinner [size]="16" />
+                  }
+                  Update password
+                </button>
+              </div>
             </form>
           </section>
 
           <section class="card card-pad">
-            <h3 class="card-title"><app-icon name="download" [size]="18" /> Your data</h3>
-            <p class="card-sub">Download every transaction you have recorded.</p>
+            <h3 class="card-title">
+              <app-icon name="download" [size]="18" /> Your data
+            </h3>
+            <p class="card-sub">
+              Download every transaction you have recorded.
+            </p>
             <div class="row wrap top">
-              <button type="button" class="btn btn-secondary" (click)="exportAll('Xlsx')" [disabled]="exporting()">@if (exporting()) { <app-spinner [size]="16" /> } @else { <app-icon name="file" [size]="16" /> } Excel</button>
-              <button type="button" class="btn btn-secondary" (click)="exportAll('Csv')" [disabled]="exporting()"><app-icon name="file" [size]="16" /> CSV</button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="exportAll('Xlsx')"
+                [disabled]="exporting()"
+              >
+                @if (exporting()) {
+                  <app-spinner [size]="16" />
+                } @else {
+                  <app-icon name="file" [size]="16" />
+                }
+                Excel
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="exportAll('Csv')"
+                [disabled]="exporting()"
+              >
+                <app-icon name="file" [size]="16" /> CSV
+              </button>
             </div>
           </section>
 
           <section class="card card-pad danger">
-            <h3 class="card-title text-danger"><app-icon name="alert-triangle" [size]="18" /> Danger zone</h3>
-            <p class="card-sub">Deleting your account permanently removes every account, category, budget, transaction and import. This cannot be undone.</p>
-            <div class="row top"><button type="button" class="btn btn-outline-danger" (click)="openDelete()"><app-icon name="trash" [size]="16" /> Delete my account</button></div>
+            <h3 class="card-title text-danger">
+              <app-icon name="alert-triangle" [size]="18" /> Danger zone
+            </h3>
+            <p class="card-sub">
+              Deleting your account permanently removes every account, category,
+              budget, transaction and import. This cannot be undone.
+            </p>
+            <div class="row top">
+              <button
+                type="button"
+                class="btn btn-outline-danger"
+                (click)="openDelete()"
+              >
+                <app-icon name="trash" [size]="16" /> Delete my account
+              </button>
+            </div>
           </section>
         </div>
       </div>
     </div>
 
-    <app-overlay [open]="deleteOpen()" title="Delete your account?" subtitle="This permanently erases all your data." variant="dialog" [width]="460" (closed)="closeDelete()">
+    <app-overlay
+      [open]="deleteOpen()"
+      title="Delete your account?"
+      subtitle="This permanently erases all your data."
+      variant="dialog"
+      [width]="460"
+      (closed)="closeDelete()"
+    >
       <div class="stack">
-        <div class="field"><label for="dp">Your password</label><input id="dp" class="input" type="password" [value]="deletePassword()" (input)="deletePassword.set($any($event.target).value)" autocomplete="current-password" /></div>
-        <div class="field"><label for="dc">Type <b>DELETE</b> to confirm</label><input id="dc" class="input" [value]="deleteText()" (input)="deleteText.set($any($event.target).value)" autocomplete="off" /></div>
-        @if (deleteError(); as e) { <span class="field-error">{{ e }}</span> }
+        <div class="field">
+          <label for="dp">Your password</label
+          ><input
+            id="dp"
+            class="input"
+            type="password"
+            [value]="deletePassword()"
+            (input)="deletePassword.set($any($event.target).value)"
+            autocomplete="current-password"
+          />
+        </div>
+        <div class="field">
+          <label for="dc">Type <b>DELETE</b> to confirm</label
+          ><input
+            id="dc"
+            class="input"
+            [value]="deleteText()"
+            (input)="deleteText.set($any($event.target).value)"
+            autocomplete="off"
+          />
+        </div>
+        @if (deleteError(); as e) {
+          <span class="field-error">{{ e }}</span>
+        }
       </div>
       <ng-container footer>
-        <button type="button" class="btn btn-ghost" (click)="closeDelete()">Cancel</button>
-        <button type="button" class="btn btn-danger" (click)="deleteAccount()" [disabled]="!canDelete() || deleting()">@if (deleting()) { <app-spinner [size]="16" /> } Delete everything</button>
+        <button type="button" class="btn btn-ghost" (click)="closeDelete()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger"
+          (click)="deleteAccount()"
+          [disabled]="!canDelete() || deleting()"
+        >
+          @if (deleting()) {
+            <app-spinner [size]="16" />
+          }
+          Delete everything
+        </button>
       </ng-container>
     </app-overlay>
   `,
-  styles: [`
-    .who { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; align-self: start; }
-    .avatar.big { width: 84px; height: 84px; border-radius: 28px; font-size: 1.8rem; box-shadow: 0 20px 44px -14px var(--primary); }
-    .who h2 { font-size: 1.3rem; } .meta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 4px 0 10px; }
-    .top { margin-top: 16px; } .end { justify-content: flex-end; }
-    .danger { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
-  `],
+  styles: [
+    `
+      .who {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        align-self: start;
+      }
+      .avatar.big {
+        width: 84px;
+        height: 84px;
+        border-radius: 28px;
+        font-size: 1.8rem;
+        box-shadow: 0 20px 44px -14px var(--primary);
+      }
+      .who h2 {
+        font-size: 1.3rem;
+      }
+      .meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin: 4px 0 10px;
+      }
+      .top {
+        margin-top: 16px;
+      }
+      .end {
+        justify-content: flex-end;
+      }
+      .danger {
+        border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+      }
+      .label {
+        margin: 18px 0 8px;
+        font-weight: 600;
+        font-size: 0.86rem;
+        color: var(--muted);
+      }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .swatch {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        cursor: pointer;
+        transition:
+          transform 0.15s,
+          box-shadow 0.2s;
+      }
+      .swatch.on {
+        box-shadow:
+          0 0 0 2px var(--panel-solid),
+          0 0 0 4px var(--primary);
+        transform: scale(1.08);
+      }
+      .swatch:active {
+        transform: scale(0.92);
+      }
+      .toggle {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-top: 18px;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      .toggle span {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-weight: 600;
+      }
+      .toggle small {
+        font-weight: 400;
+        line-height: 1.4;
+      }
+      .help-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .demo {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .demo p {
+        margin: 0;
+        line-height: 1.5;
+      }
+    `,
+  ],
 })
 export class SettingsComponent {
   private readonly fb = inject(FormBuilder);
@@ -116,13 +523,24 @@ export class SettingsComponent {
   private readonly txApi = inject(TransactionsApi);
   private readonly refData = inject(ReferenceDataService);
   protected readonly theme = inject(ThemeService);
+  protected readonly prefs = inject(PreferencesService);
+  protected readonly tour = inject(TourService);
+  protected readonly shortcuts = inject(ShortcutsService);
+  private readonly sampleApi = inject(SampleDataApi);
+  private readonly refresh = inject(RefreshService);
+
+  protected readonly accents = ACCENTS;
+  protected readonly sample = signal<SampleDataStatusDto | null>(null);
+  protected readonly sampleBusy = signal(false);
 
   protected readonly user = this.auth.user;
   protected readonly initials = initials;
   protected readonly tz = TIME_ZONE;
   protected readonly currencies = CURRENCY_OPTIONS;
   protected readonly themes: SegmentOption[] = [
-    { value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'settings' },
+    { value: 'dark', label: 'Dark', icon: 'moon' },
+    { value: 'light', label: 'Light', icon: 'sun' },
+    { value: 'system', label: 'System', icon: 'settings' },
   ];
 
   protected readonly savingProfile = signal(false);
@@ -135,25 +553,106 @@ export class SettingsComponent {
   protected readonly deleteError = signal<string | null>(null);
   private readonly serverErrors = signal<Record<string, string[]>>({});
 
-  protected readonly canDelete = computed(() => this.deletePassword().length > 0 && this.deleteText().trim() === 'DELETE');
+  protected readonly canDelete = computed(
+    () =>
+      this.deletePassword().length > 0 && this.deleteText().trim() === 'DELETE',
+  );
 
   protected readonly profile = this.fb.nonNullable.group({
-    fullName: [this.auth.user()?.fullName ?? '', [Validators.required, Validators.maxLength(100)]],
-    defaultCurrency: [this.auth.user()?.defaultCurrency ?? 'INR', [Validators.required]],
+    fullName: [
+      this.auth.user()?.fullName ?? '',
+      [Validators.required, Validators.maxLength(100)],
+    ],
+    defaultCurrency: [
+      this.auth.user()?.defaultCurrency ?? 'INR',
+      [Validators.required],
+    ],
   });
 
   protected readonly password = this.fb.nonNullable.group({
     currentPassword: ['', [Validators.required]],
-    newPassword: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(128), Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/)]],
+    newPassword: [
+      '',
+      [
+        Validators.required,
+        Validators.minLength(8),
+        Validators.maxLength(128),
+        Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/),
+      ],
+    ],
   });
 
+  constructor() {
+    this.refreshSample();
+  }
+
+  protected setAccent(accent: AccentName): void {
+    this.theme.setAccent(accent);
+  }
+
+  protected loadSample(): void {
+    if (this.sampleBusy()) return;
+    this.sampleBusy.set(true);
+    this.sampleApi.load().subscribe({
+      next: (status) => {
+        this.sampleBusy.set(false);
+        this.sample.set(status);
+        this.toast.success('Demo data loaded.');
+        this.reloadAll();
+      },
+      error: () => this.sampleBusy.set(false),
+    });
+  }
+
+  protected async removeSample(): Promise<void> {
+    const ok = await this.confirm.confirm({
+      title: 'Remove demo data?',
+      message:
+        'The demo accounts and everything recorded on them are deleted. Your own data is not touched.',
+      confirmText: 'Remove',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    this.sampleBusy.set(true);
+    this.sampleApi.remove().subscribe({
+      next: () => {
+        this.sampleBusy.set(false);
+        this.sample.set({
+          isLoaded: false,
+          accountCount: 0,
+          transactionCount: 0,
+        });
+        this.toast.success('Demo data removed.');
+        this.reloadAll();
+      },
+      error: () => this.sampleBusy.set(false),
+    });
+  }
+
+  private refreshSample(): void {
+    this.sampleApi.status().subscribe({
+      next: (status) => this.sample.set(status),
+      error: () => this.sample.set(null),
+    });
+  }
+
+  private reloadAll(): void {
+    this.refData.load().subscribe();
+    this.refresh.bump();
+  }
+
   protected setCurrency(value: string | number | null): void {
-    this.profile.controls.defaultCurrency.setValue(typeof value === 'string' ? value : 'INR');
+    this.profile.controls.defaultCurrency.setValue(
+      typeof value === 'string' ? value : 'INR',
+    );
     this.profile.markAsDirty();
   }
 
   protected setTheme(value: string): void {
-    this.theme.set(value === 'light' || value === 'system' ? (value as ThemeMode) : 'dark');
+    this.theme.set(
+      value === 'light' || value === 'system' ? (value as ThemeMode) : 'dark',
+    );
   }
 
   protected pwError(field: 'currentPassword' | 'newPassword'): string | null {
@@ -161,7 +660,9 @@ export class SettingsComponent {
     if (server) return server;
     const c = this.password.controls[field];
     if (!c.invalid || !(c.touched || c.dirty)) return null;
-    return c.errors?.['required'] ? 'This is required.' : 'Use 8+ characters with upper and lower case letters and a number.';
+    return c.errors?.['required']
+      ? 'This is required.'
+      : 'Use 8+ characters with upper and lower case letters and a number.';
   }
 
   protected saveProfile(): void {
@@ -170,14 +671,19 @@ export class SettingsComponent {
 
     this.savingProfile.set(true);
     const v = this.profile.getRawValue();
-    this.auth.updateProfile({ fullName: v.fullName.trim(), defaultCurrency: v.defaultCurrency }).subscribe({
-      next: () => {
-        this.savingProfile.set(false);
-        this.profile.markAsPristine();
-        this.toast.success('Profile saved.');
-      },
-      error: () => this.savingProfile.set(false),
-    });
+    this.auth
+      .updateProfile({
+        fullName: v.fullName.trim(),
+        defaultCurrency: v.defaultCurrency,
+      })
+      .subscribe({
+        next: () => {
+          this.savingProfile.set(false);
+          this.profile.markAsPristine();
+          this.toast.success('Profile saved.');
+        },
+        error: () => this.savingProfile.set(false),
+      });
   }
 
   protected savePassword(): void {
@@ -196,7 +702,10 @@ export class SettingsComponent {
       error: (err: unknown) => {
         const e = ApiError.from(err);
         this.savingPassword.set(false);
-        if (e.code === 'invalid_current_password') this.serverErrors.set({ currentPassword: ['That is not your current password.'] });
+        if (e.code === 'invalid_current_password')
+          this.serverErrors.set({
+            currentPassword: ['That is not your current password.'],
+          });
         else if (e.hasFieldErrors) this.serverErrors.set(e.errors);
       },
     });
@@ -215,7 +724,12 @@ export class SettingsComponent {
   }
 
   protected async signOut(): Promise<void> {
-    const ok = await this.confirm.confirm({ title: 'Sign out?', message: 'You will need to sign in again to see your data.', confirmText: 'Sign out', tone: 'primary' });
+    const ok = await this.confirm.confirm({
+      title: 'Sign out?',
+      message: 'You will need to sign in again to see your data.',
+      confirmText: 'Sign out',
+      tone: 'primary',
+    });
     if (ok) {
       this.refData.clear();
       this.auth.logout();
@@ -249,7 +763,11 @@ export class SettingsComponent {
       error: (err: unknown) => {
         const e = ApiError.from(err);
         this.deleting.set(false);
-        this.deleteError.set(e.code === 'invalid_password' ? 'That password is not correct.' : e.message);
+        this.deleteError.set(
+          e.code === 'invalid_password'
+            ? 'That password is not correct.'
+            : e.message,
+        );
       },
     });
   }

@@ -103,8 +103,8 @@ public sealed class CsvImportParser : IImportParser
             if (type is null)
             {
                 var reason = rawType.Trim().StartsWith("transfer", StringComparison.OrdinalIgnoreCase)
-                    ? "Transfers between accounts are not supported yet."
-                    : $"Unknown type '{rawType.Trim()}'. Expected Income or Exp.";
+                    ? $"Unknown transfer type '{rawType.Trim()}'. Expected Transfer-Out or Transfer-In."
+                    : $"Unknown type '{rawType.Trim()}'. Expected Income, Exp., Transfer-Out or Transfer-In.";
                 invalid.Add(new InvalidRow(line, reason));
                 continue;
             }
@@ -129,7 +129,8 @@ public sealed class CsvImportParser : IImportParser
                 Amount: amount.Value,
                 Currency: Optional(fields, currencyColumn) ?? string.Empty,
                 Account: Optional(fields, accountColumn) ?? DefaultAccount,
-                Category: Optional(fields, categoryColumn) ?? DefaultCategory,
+                Category: Optional(fields, categoryColumn)
+                          ?? (type is TransactionType.TransferOut or TransactionType.TransferIn ? string.Empty : DefaultCategory),
                 Subcategory: Optional(fields, subcategoryColumn),
                 Description: Optional(fields, descriptionColumn),
                 Note: Optional(fields, noteColumn)));
@@ -315,6 +316,8 @@ public sealed class CsvImportParser : IImportParser
         {
             "exp" or "expense" or "expenses" or "debit" or "dr" or "withdrawal" => TransactionType.Expense,
             "income" or "inc" or "credit" or "cr" or "deposit" => TransactionType.Income,
+            "transfer-out" or "transfer out" or "transfer_out" or "transferout" => TransactionType.TransferOut,
+            "transfer-in" or "transfer in" or "transfer_in" or "transferin" => TransactionType.TransferIn,
             _ => null
         };
 

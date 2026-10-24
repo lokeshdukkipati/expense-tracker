@@ -564,15 +564,24 @@ function buildZones(): SelectOption[] {
                                   }}
                                 </td>
                                 <td class="hide-tablet muted">
-                                  {{ r.account }}
+                                  {{
+                                    r.type === 'Income' || r.type === 'Expense'
+                                      ? r.account
+                                      : r.account + ' → ' + r.category
+                                  }}
                                 </td>
                                 <td
                                   class="right num"
                                   [class.text-success]="r.type === 'Income'"
+                                  [class.muted]="
+                                    r.type !== 'Income' && r.type !== 'Expense'
+                                  "
                                 >
                                   {{
-                                    (r.type === 'Income' ? r.amount : -r.amount)
-                                      | money: '' : r.currency
+                                    (r.type === 'Expense'
+                                      ? -r.amount
+                                      : r.amount
+                                    ) | money: '' : r.currency
                                   }}
                                 </td>
                               </tr>
@@ -677,10 +686,15 @@ function buildZones(): SelectOption[] {
                                 <td
                                   class="right num"
                                   [class.text-success]="r.type === 'Income'"
+                                  [class.muted]="
+                                    r.type !== 'Income' && r.type !== 'Expense'
+                                  "
                                 >
                                   {{
-                                    (r.type === 'Income' ? r.amount : -r.amount)
-                                      | money: '' : r.currency
+                                    (r.type === 'Expense'
+                                      ? -r.amount
+                                      : r.amount
+                                    ) | money: '' : r.currency
                                   }}
                                 </td>
                               </tr>
@@ -1083,6 +1097,13 @@ function buildZones(): SelectOption[] {
                   <span class="chip"
                     >{{ r.categoriesCreated }} new categor{{
                       r.categoriesCreated === 1 ? 'y' : 'ies'
+                    }}</span
+                  >
+                }
+                @if (r.transfersCreated) {
+                  <span class="chip"
+                    >{{ r.transfersCreated }} transfer{{
+                      r.transfersCreated === 1 ? '' : 's'
                     }}</span
                   >
                 }

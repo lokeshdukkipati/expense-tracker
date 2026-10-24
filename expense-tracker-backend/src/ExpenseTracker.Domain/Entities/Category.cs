@@ -28,4 +28,10 @@ public class Category : BaseEntity
     public string? Icon { get; set; }
 
     public bool IsArchived { get; set; }
+
+    /// <summary>
+    /// True for categories the app manages itself (the hidden "Transfer" category used by transfer legs).
+    /// System categories never appear in category lists and cannot be edited or deleted by the user.
+    /// </summary>
+    public bool IsSystem { get; set; }
 }

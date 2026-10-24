@@ -16,6 +16,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.PasswordHash).IsRequired().HasMaxLength(512);
         builder.Property(x => x.FullName).IsRequired().HasMaxLength(100);
         builder.Property(x => x.DefaultCurrency).IsRequired().HasMaxLength(3);
+        builder.Property(x => x.PreferencesJson).HasColumnType("jsonb");
         builder.HasIndex(x => x.Email).IsUnique();
     }
 }
@@ -91,7 +92,18 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         builder.HasIndex(x => new { x.UserId, x.AccountId, x.OccurredAt });
         builder.HasIndex(x => x.ImportBatchId);
 
-        builder.ToTable(t => t.HasCheckConstraint("ck_transactions_amount_non_negative", "amount >= 0"));
+        // Finds the other leg of a transfer quickly; ordinary transactions (NULL group) stay out of this index.
+        builder.HasIndex(x => new { x.UserId, x.TransferGroupId }).HasFilter("transfer_group_id IS NOT NULL");
+
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("ck_transactions_amount_non_negative", "amount >= 0");
+
+            // A row carries a transfer group if and only if it is a transfer leg.
+            t.HasCheckConstraint(
+                "ck_transactions_transfer_group",
+                "(\"type\" IN ('TransferOut', 'TransferIn')) = (transfer_group_id IS NOT NULL)");
+        });
 
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
@@ -136,6 +148,54 @@ public sealed class BudgetConfiguration : IEntityTypeConfiguration<Budget>
         });
 
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+
+public sealed class SavingsGoalConfiguration : IEntityTypeConfiguration<SavingsGoal>
+{
+    public void Configure(EntityTypeBuilder<SavingsGoal> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.TargetAmount).HasPrecision(18, 2);
+        builder.Property(x => x.SavedAmount).HasPrecision(18, 2);
+        builder.Property(x => x.Currency).IsRequired().HasMaxLength(3);
+        builder.Property(x => x.Color).HasMaxLength(7);
+        builder.Property(x => x.Icon).HasMaxLength(50);
+
+        builder.HasIndex(x => new { x.UserId, x.IsArchived });
+
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("ck_savings_goals_target_positive", "target_amount > 0");
+            t.HasCheckConstraint("ck_savings_goals_saved_non_negative", "saved_amount >= 0");
+        });
+
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        // Deleting the linked account keeps the goal; it simply becomes a manually tracked goal.
+        builder.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+public sealed class CategoryRuleConfiguration : IEntityTypeConfiguration<CategoryRule>
+{
+    public void Configure(EntityTypeBuilder<CategoryRule> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Pattern).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.MatchType).HasConversion<string>().HasMaxLength(20);
+        builder.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+
+        // The same text cannot be mapped twice for the same kind of transaction.
+        builder.HasIndex(x => new { x.UserId, x.Type, x.MatchType, x.Pattern }).IsUnique();
+        builder.HasIndex(x => x.CategoryId);
+
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        // Deleting a category removes the rules that point at it (same behaviour as budgets).
         builder.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
     }
 }

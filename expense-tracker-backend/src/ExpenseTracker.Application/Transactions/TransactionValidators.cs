@@ -1,3 +1,4 @@
+using ExpenseTracker.Domain.Enums;
 using FluentValidation;
 
 namespace ExpenseTracker.Application.Transactions;
@@ -47,7 +48,9 @@ public abstract class TransactionInputValidator<T> : AbstractValidator<T> where 
     {
         RuleFor(x => x.AccountId).NotEmpty();
         RuleFor(x => x.CategoryId).NotEmpty();
-        RuleFor(x => x.Type).IsInEnum();
+        RuleFor(x => x.Type).IsInEnum()
+            .Must(type => type is TransactionType.Expense or TransactionType.Income)
+            .WithMessage("Transfers between accounts are created from the transfer screen.");
         RuleFor(x => x.Amount)
             .GreaterThan(0m)
             .LessThanOrEqualTo(1_000_000_000_000m)

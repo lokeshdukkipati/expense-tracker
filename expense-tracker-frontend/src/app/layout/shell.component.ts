@@ -1,32 +1,69 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../core/services/auth.service';
 import { ConfirmService } from '../core/services/confirm.service';
+import { PaletteService } from '../core/services/palette.service';
+import { PreferencesService } from '../core/services/preferences.service';
+import { QuickAddService } from '../core/services/quick-add.service';
 import { ReferenceDataService } from '../core/services/reference-data.service';
+import { ShortcutsService } from '../core/services/shortcuts.service';
 import { ThemeService } from '../core/services/theme.service';
+import { TourService } from '../core/services/tour.service';
 import { TxFormService } from '../core/services/tx-form.service';
 import { ViewportService } from '../core/services/viewport.service';
 import { initials } from '../core/utils/format';
 import { TransactionFormComponent } from '../features/transactions/transaction-form.component';
+import { CommandPaletteComponent } from '../shared/ui/command-palette.component';
+import { ConfettiHostComponent } from '../shared/ui/confetti.component';
 import { IconComponent, IconName } from '../shared/ui/icon.component';
 import { OverlayComponent } from '../shared/ui/overlay.component';
+import { QuickAddComponent } from '../shared/ui/quick-add.component';
+import { ShortcutsOverlayComponent } from '../shared/ui/shortcuts-overlay.component';
+import { TourComponent } from '../shared/ui/tour.component';
 
 interface NavItem {
   path: string;
   label: string;
   icon: IconName;
+  /** Marks the element so the guided tour can highlight it. */
+  tour?: string;
 }
 
+// The first three are also the phone's bottom bar; the rest go in the "More" sheet.
 const NAV: NavItem[] = [
   { path: '/dashboard', label: 'Dashboard', icon: 'home' },
   { path: '/transactions', label: 'Transactions', icon: 'list' },
   { path: '/analytics', label: 'Analytics', icon: 'chart' },
   { path: '/budgets', label: 'Budgets', icon: 'target' },
-  { path: '/accounts', label: 'Accounts', icon: 'wallet' },
+  { path: '/goals', label: 'Goals', icon: 'rocket', tour: 'nav-goals' },
+  {
+    path: '/accounts',
+    label: 'Accounts',
+    icon: 'wallet',
+    tour: 'nav-accounts',
+  },
+  { path: '/net-worth', label: 'Net worth', icon: 'landmark' },
   { path: '/categories', label: 'Categories', icon: 'tag' },
-  { path: '/import', label: 'Import', icon: 'upload' },
+  { path: '/rules', label: 'Auto-categorise', icon: 'wand' },
+  { path: '/import', label: 'Import', icon: 'upload', tour: 'nav-import' },
+  { path: '/achievements', label: 'Streaks & badges', icon: 'award' },
 ];
 
 const COLLAPSE_KEY = 'et.nav.collapsed';
@@ -40,6 +77,11 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
     IconComponent,
     OverlayComponent,
     TransactionFormComponent,
+    QuickAddComponent,
+    CommandPaletteComponent,
+    ShortcutsOverlayComponent,
+    TourComponent,
+    ConfettiHostComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -61,6 +103,7 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
               routerLinkActive="active"
               [style.--i]="i"
               [attr.title]="collapsed() ? item.label : null"
+              [attr.data-tour]="item.tour ?? null"
             >
               <app-icon [name]="item.icon" [size]="20" />
               <span>{{ item.label }}</span>
@@ -109,7 +152,27 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
           <button
             type="button"
             class="btn btn-ghost btn-icon"
-            (click)="theme.toggle()"
+            data-tour="quick-add"
+            (click)="quickAdd.open()"
+            aria-label="Quick add (Q)"
+            title="Quick add (Q)"
+          >
+            <app-icon name="zap" />
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon"
+            data-tour="palette"
+            (click)="palette.open()"
+            aria-label="Search and commands (Ctrl K)"
+            title="Search and commands (Ctrl K)"
+          >
+            <app-icon name="search" />
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon"
+            (click)="theme.toggle($event)"
             [attr.aria-label]="
               theme.resolved() === 'dark'
                 ? 'Switch to light theme'
@@ -200,7 +263,21 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
         <button
           type="button"
           class="btn btn-secondary btn-block"
-          (click)="theme.toggle()"
+          (click)="more.set(false); quickAdd.open()"
+        >
+          <app-icon name="zap" [size]="18" /> Quick add
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-block"
+          (click)="more.set(false); txForm.openTransfer()"
+        >
+          <app-icon name="swap" [size]="18" /> New transfer
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-block"
+          (click)="theme.toggle($event)"
         >
           <app-icon
             [name]="theme.resolved() === 'dark' ? 'sun' : 'moon'"
@@ -219,6 +296,11 @@ const COLLAPSE_KEY = 'et.nav.collapsed';
     </app-overlay>
 
     <app-transaction-form />
+    <app-quick-add />
+    <app-command-palette />
+    <app-shortcuts-overlay />
+    <app-tour />
+    <app-confetti-host />
   `,
   styles: [
     `
@@ -650,7 +732,11 @@ export class ShellComponent {
   protected readonly auth = inject(AuthService);
   protected readonly theme = inject(ThemeService);
   protected readonly txForm = inject(TxFormService);
+  protected readonly quickAdd = inject(QuickAddService);
+  protected readonly palette = inject(PaletteService);
   protected readonly viewport = inject(ViewportService);
+  private readonly prefs = inject(PreferencesService);
+  private readonly tour = inject(TourService);
   private readonly refData = inject(ReferenceDataService);
   private readonly confirm = inject(ConfirmService);
   private readonly router = inject(Router);
@@ -674,6 +760,11 @@ export class ShellComponent {
     const all = [
       ...NAV,
       { path: '/settings', label: 'Settings', icon: 'settings' as IconName },
+      {
+        path: '/duplicates',
+        label: 'Double charges',
+        icon: 'copy' as IconName,
+      },
     ];
     return (
       all.find(
@@ -687,6 +778,20 @@ export class ShellComponent {
 
   constructor() {
     this.refData.load().subscribe();
+
+    // Keyboard shortcuts stay active for the whole signed-in session.
+    inject(ShortcutsService);
+
+    // A brand-new account (no accounts yet) gets the guided tour once; existing users are never interrupted.
+    effect(() => {
+      if (
+        this.prefs.synced() &&
+        this.refData.loaded() &&
+        this.refData.accounts().length === 0
+      ) {
+        untracked(() => this.tour.maybeStart());
+      }
+    });
 
     // Close menus when navigating.
     effect(() => {
@@ -725,27 +830,6 @@ export class ShellComponent {
   protected onPointer(event: PointerEvent): void {
     if (this.menu() && !(event.target as HTMLElement).closest('.user'))
       this.menu.set(false);
-  }
-
-  @HostListener('document:keydown', ['$event'])
-  protected onKey(event: KeyboardEvent): void {
-    const target = event.target as HTMLElement | null;
-    const typing =
-      !!target &&
-      (target.isContentEditable ||
-        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
-    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-
-    if (event.key === 'n') {
-      event.preventDefault();
-      this.txForm.openNew();
-    } else if (event.key === '/') {
-      const search = document.querySelector<HTMLInputElement>('.search input');
-      if (search) {
-        event.preventDefault();
-        search.focus();
-      }
-    }
   }
 
   private readCollapsed(): boolean {

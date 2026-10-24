@@ -22,5 +22,11 @@ public class User : BaseEntity
 
     public DateTimeOffset? LastLoginAt { get; set; }
 
+    /// <summary>
+    /// UI preferences as JSON (theme, accent colour, dashboard layout, onboarding and badge flags).
+    /// Null until the user first changes one.
+    /// </summary>
+    public string? PreferencesJson { get; set; }
+
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }

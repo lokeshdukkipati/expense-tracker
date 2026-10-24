@@ -77,8 +77,108 @@ html[data-theme='light'] {
   --glow-c: rgba(8, 145, 178, 0.1);
 }
 
+/* ============================================================ accent colours (chosen in Settings, see PreferencesService) */
+html[data-accent='ocean'] {
+  --grad: linear-gradient(135deg, #2ea8f5 0%, #22d3ee 55%, #34d399 100%);
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, #2ea8f5 22%, transparent), color-mix(in srgb, #34d399 18%, transparent));
+}
+
+html[data-accent='ocean'][data-theme='dark'] {
+  --primary: #2ea8f5;
+  --primary-2: #7cc8ff;
+  --ring: rgba(46, 168, 245, 0.35);
+  --glow-a: rgba(46, 168, 245, 0.26);
+}
+
+html[data-accent='ocean'][data-theme='light'] {
+  --primary: #0b7fd1;
+  --primary-2: #0a6cb5;
+  --ring: rgba(11, 127, 209, 0.28);
+  --glow-a: rgba(11, 127, 209, 0.15);
+}
+
+html[data-accent='emerald'] {
+  --grad: linear-gradient(135deg, #10b981 0%, #22d3ee 55%, #60a5fa 100%);
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, #10b981 22%, transparent), color-mix(in srgb, #60a5fa 18%, transparent));
+}
+
+html[data-accent='emerald'][data-theme='dark'] {
+  --primary: #10b981;
+  --primary-2: #6ee7b7;
+  --ring: rgba(16, 185, 129, 0.35);
+  --glow-a: rgba(16, 185, 129, 0.24);
+}
+
+html[data-accent='emerald'][data-theme='light'] {
+  --primary: #059669;
+  --primary-2: #047857;
+  --ring: rgba(5, 150, 105, 0.28);
+  --glow-a: rgba(5, 150, 105, 0.14);
+}
+
+html[data-accent='sunset'] {
+  --grad: linear-gradient(135deg, #f97316 0%, #fb7185 55%, #f472b6 100%);
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, #f97316 22%, transparent), color-mix(in srgb, #f472b6 18%, transparent));
+}
+
+html[data-accent='sunset'][data-theme='dark'] {
+  --primary: #f97316;
+  --primary-2: #fdba74;
+  --ring: rgba(249, 115, 22, 0.35);
+  --glow-a: rgba(249, 115, 22, 0.24);
+}
+
+html[data-accent='sunset'][data-theme='light'] {
+  --primary: #ea580c;
+  --primary-2: #c2410c;
+  --ring: rgba(234, 88, 12, 0.28);
+  --glow-a: rgba(234, 88, 12, 0.14);
+}
+
+html[data-accent='rose'] {
+  --grad: linear-gradient(135deg, #f43f5e 0%, #f472b6 55%, #c084fc 100%);
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, #f43f5e 22%, transparent), color-mix(in srgb, #c084fc 18%, transparent));
+}
+
+html[data-accent='rose'][data-theme='dark'] {
+  --primary: #f43f5e;
+  --primary-2: #fda4af;
+  --ring: rgba(244, 63, 94, 0.35);
+  --glow-a: rgba(244, 63, 94, 0.24);
+}
+
+html[data-accent='rose'][data-theme='light'] {
+  --primary: #e11d48;
+  --primary-2: #be123c;
+  --ring: rgba(225, 29, 72, 0.28);
+  --glow-a: rgba(225, 29, 72, 0.14);
+}
+
+html[data-accent='amber'] {
+  --grad: linear-gradient(135deg, #f59e0b 0%, #fb923c 55%, #f472b6 100%);
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, #f59e0b 22%, transparent), color-mix(in srgb, #f472b6 18%, transparent));
+}
+
+html[data-accent='amber'][data-theme='dark'] {
+  --primary: #f59e0b;
+  --primary-2: #fcd34d;
+  --ring: rgba(245, 158, 11, 0.35);
+  --glow-a: rgba(245, 158, 11, 0.22);
+}
+
+html[data-accent='amber'][data-theme='light'] {
+  --primary: #d97706;
+  --primary-2: #b45309;
+  --ring: rgba(217, 119, 6, 0.28);
+  --glow-a: rgba(217, 119, 6, 0.14);
+}
+
 /* ============================================================ base */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 html.scroll-lock, html.scroll-lock body { overflow: hidden; }
@@ -335,6 +435,124 @@ tr:hover .row-actions, .row-actions:focus-within { opacity: 1; }
 ::view-transition-new(root) { animation: pageIn .35s cubic-bezier(.2, .8, .2, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* The same switch, chosen by the user in Settings instead of by the device. */
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-motion='reduced']::view-transition-old(root),
+html[data-motion='reduced']::view-transition-new(root) {
+  animation: none;
+}
+
+/* Theme switch: the new theme spreads out from where the user tapped (see ThemeService). */
+html.theme-vt::view-transition-old(root) {
+  animation: none;
+  z-index: 1;
+}
+
+html.theme-vt::view-transition-new(root) {
+  animation: themeReveal .7s cubic-bezier(.2, .8, .2, 1) both;
+  z-index: 2;
+}
+
+@keyframes themeReveal {
+  from {
+    clip-path: circle(0 at var(--vt-x, 100%) var(--vt-y, 0));
+  }
+
+  to {
+    clip-path: circle(150vmax at var(--vt-x, 100%) var(--vt-y, 0));
+  }
+}
+
+/* ============================================================ scroll reveal, swipe rows, phone helpers */
+/* Fades up the first time it scrolls into view (see RevealDirective). */
+.rv {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.rv.rv-in {
+  animation: fadeUp .6s cubic-bezier(.2, .8, .2, 1) both;
+  animation-delay: calc(var(--rv-delay, 0) * 1ms);
+}
+
+/* Swipe-to-reveal rows on touch screens (see SwipeRowDirective). */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe-content {
+  position: relative;
+  z-index: 1;
+  background: var(--swipe-bg, var(--panel-solid));
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--swipe-w, 120px);
+  display: flex;
+}
+
+.swipe-actions>* {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  border: 0;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.swipe-actions .swipe-edit {
+  background: var(--info);
+}
+
+.swipe-actions .swipe-delete {
+  background: var(--danger);
+}
+
+/* Keeps content clear of the iPhone home bar. */
+.safe-bottom {
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+.pressable {
+  transition: transform .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pressable:active {
+  transform: scale(.97);
 }
